@@ -529,4 +529,15 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_logger_name() -> Result<(), RclrsError> {
+        // Use helper to create 2 nodes for us
+        let graph = construct_test_graph("test_topics_graph")?;
+
+        assert_eq!(graph.node1.logger_name(), "graph_test_node_1");
+        assert_eq!(graph.node2.logger_name(), "graph_test_node_2");
+
+        Ok(())
+    }
 }
