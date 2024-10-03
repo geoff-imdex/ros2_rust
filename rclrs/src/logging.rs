@@ -10,7 +10,15 @@ use crate::rcl_bindings::*;
 // Used to protect calls to rcl/rcutils in case those functions manipulate global variables
 static LOG_GUARD: Mutex<()> = Mutex::new(());
 
+/// Calls the underlying rclutils logging function
 /// Don't call this directly, use the logging macros instead.
+///
+/// # Panics
+///
+/// This function might panic in the following scenarios:
+/// - when called if the lock is already held by the current thread.
+/// - if the construction of CString objects used to create the log output fail,
+///   although, this highly unlikely to occur in most cases
 #[doc(hidden)]
 pub fn log(msg: &str, logger_name: &str, file: &str, line: u32, severity: LogSeverity) {
     // currently not possible to get function name in rust.
@@ -23,8 +31,10 @@ pub fn log(msg: &str, logger_name: &str, file: &str, line: u32, severity: LogSev
         line_number: line as usize,
     };
     let format = CString::new("%s").unwrap();
-    let logger_name = CString::new(logger_name).unwrap();
-    let message = CString::new(msg).unwrap();
+    let logger_name = CString::new(logger_name)
+        .expect("Logger name is a valid c style string, e.g. check for extraneous null characters");
+    let message = CString::new(msg)
+        .expect("Valid c style string required, e.g. check for extraneous null characters");
     let severity = severity.to_native();
 
     let _guard = LOG_GUARD.lock().unwrap();

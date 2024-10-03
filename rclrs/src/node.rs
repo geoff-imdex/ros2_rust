@@ -444,10 +444,14 @@ impl Node {
     /// Returns the logger name of the node.
     pub fn logger_name(&self) -> &str {
         let rcl_node = self.handle.rcl_node.lock().unwrap();
+        // SAFETY: No pre-conditions for this function
         let name_raw_ptr = unsafe { rcl_node_get_logger_name(&*rcl_node) };
         if name_raw_ptr.is_null() {
             return "";
         }
+        // SAFETY: The returned CStr is immediately converted to a string slice,
+        // so the lifetime is no issue. The ptr is valid as per the documentation
+        // of rcl_node_get_logger_name.
         let name_cstr = unsafe { CStr::from_ptr(name_raw_ptr) };
         name_cstr.to_str().unwrap_or("")
     }
