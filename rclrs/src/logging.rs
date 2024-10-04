@@ -17,6 +17,7 @@ static LOG_GUARD: Mutex<()> = Mutex::new(());
 ///
 /// This function might panic in the following scenarios:
 /// - A logger_name is provided that is not a valid c-string, e.g. contains extraneous null characters
+/// - The user-supplied "msg" is not a valid c-string, e.g. contains extraneous null characters
 /// - When called if the lock is already held by the current thread.
 /// - If the construction of CString objects used to create the log output fail,
 ///   although, this highly unlikely to occur in most cases
