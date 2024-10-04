@@ -16,8 +16,9 @@ static LOG_GUARD: Mutex<()> = Mutex::new(());
 /// # Panics
 ///
 /// This function might panic in the following scenarios:
-/// - when called if the lock is already held by the current thread.
-/// - if the construction of CString objects used to create the log output fail,
+/// - A logger_name is provided that is not a valid c-string, e.g. contains extraneous null characters
+/// - When called if the lock is already held by the current thread.
+/// - If the construction of CString objects used to create the log output fail,
 ///   although, this highly unlikely to occur in most cases
 #[doc(hidden)]
 pub fn log(msg: &str, logger_name: &str, file: &str, line: u32, severity: LogSeverity) {
