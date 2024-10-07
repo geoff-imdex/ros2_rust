@@ -44,7 +44,7 @@ unsafe impl Send for rcl_node_t {}
 /// It's a good idea for node names in the same executable to be unique.
 ///
 /// ## Remapping
-/// The namespace and name given when creating the node can be overriden through the command line.
+/// The namespace and name given when creating the node can be overridden through the command line.
 /// In that sense, the parameters to the node creation functions are only the _default_ namespace and
 /// name.
 /// See also the [official tutorial][1] on the command line arguments for ROS nodes, and the
