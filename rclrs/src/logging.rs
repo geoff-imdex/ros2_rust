@@ -215,7 +215,10 @@ macro_rules! log_with_conditions {
         $crate::log(&std::fmt::format(format_args!($msg_start, $($($args)*)?)), $logger_name, file!(), line!(), $severity);
     };
     ($severity: expr, $logger_name: expr, $conditions: expr, $($args:tt)*) => {
-        // Adding these use statements here due to this issue: https://github.com/intellij-rust/intellij-rust/issues/9853
+        // Adding these use statements here due an issue like this one:
+        // https://github.com/intellij-rust/intellij-rust/issues/9853
+        // Note: that issue appears to be specific to jetbrains intellisense however,
+        // observed same/similar behaviour with rust-analyzer/rustc
         use std::sync::Once;
         use std::time::SystemTime;
 
