@@ -3,11 +3,9 @@
 // Adapted from https://github.com/sequenceplanner/r2r/blob/89cec03d07a1496a225751159cbc7bfb529d9dd1/r2r/src/utils.rs
 // Further adapted from https://github.com/mvukov/rules_ros2/pull/371
 
-use std::{
-    ffi::CString,
-    sync::{Mutex, Once},
-    time::{Duration, SystemTime},
-};
+use std::ffi::CString;
+use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::rcl_bindings::*;
 
@@ -217,12 +215,16 @@ macro_rules! log_with_conditions {
         $crate::log(&std::fmt::format(format_args!($msg_start, $($($args)*)?)), $logger_name, file!(), line!(), $severity);
     };
     ($severity: expr, $logger_name: expr, $conditions: expr, $($args:tt)*) => {
+        // Adding these use statements here due to this issue: https://github.com/intellij-rust/intellij-rust/issues/9853
+        use std::sync::Once;
+        use std::time::SystemTime;
+
         let log_conditions: $crate::LogConditions = $conditions;
         let mut allow_logging = true;
         match log_conditions.occurs {
             // Create the static variables here so we get a per-instance static
             $crate::LoggingOccurrence::Once => {
-                static LOG_ONCE: std::sync::Once = Once::new();
+                static LOG_ONCE: std::sync::Once = std::sync::Once::new();
                 LOG_ONCE.call_once(|| {
                     $crate::log(&std::fmt::format(format_args!($($args)*)), $logger_name, file!(), line!(), $severity);
                 });
@@ -230,7 +232,7 @@ macro_rules! log_with_conditions {
             }
             $crate::LoggingOccurrence::SkipFirst => {
                 // Noop, just make sure we exit the first time...
-                static SKIP_FIRST: Once = Once::new();
+                static SKIP_FIRST: std::sync::Once = std::sync::Once::new();
                 SKIP_FIRST.call_once(|| {
                     // Only disable logging the first time
                     allow_logging = false;
@@ -242,25 +244,25 @@ macro_rules! log_with_conditions {
         }
 
         // If we have a throttle period AND logging has not already been disabled due to SkipFirst (and technically Once) settings
-        if log_conditions.publish_interval > Duration::ZERO && allow_logging {
+        if log_conditions.publish_interval > std::time::Duration::ZERO && allow_logging {
             let mut ignore_first_timeout = false;
             // Need to initialise to a constant
-            static LAST_LOG_TIME: Mutex<SystemTime> = Mutex::new(SystemTime::UNIX_EPOCH);
+            static LAST_LOG_TIME: Mutex<std::time::SystemTime> = Mutex::new(std::time::SystemTime::UNIX_EPOCH);
 
-            static INIT_LAST_LOG_TIME: Once = Once::new();
+            static INIT_LAST_LOG_TIME: std::sync::Once = std::sync::Once::new();
             // Set the last log time to "now", but let us log the message the first time we hit this code, i.e. initial
             // behaviour is expired.
             // Note: If this is part of a SkipFirst macro call, we will only hit this code on the second iteration.
             INIT_LAST_LOG_TIME.call_once(|| {
                 let mut last_log_time = LAST_LOG_TIME.lock().unwrap();
-                *last_log_time = SystemTime::now();
+                *last_log_time = std::time::SystemTime::now();
                 ignore_first_timeout = true;
             });
 
             let mut last_log_time = LAST_LOG_TIME.lock().unwrap();
-            if SystemTime::now() >= *last_log_time + log_conditions.publish_interval {
+            if std::time::SystemTime::now() >= *last_log_time + log_conditions.publish_interval {
                 // Update our time stamp
-                *last_log_time = SystemTime::now();
+                *last_log_time = std::time::SystemTime::now();
             }
             else if !ignore_first_timeout {
                 // Timer has not expired (and this is not the first time through here)
