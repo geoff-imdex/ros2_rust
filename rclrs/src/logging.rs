@@ -98,21 +98,25 @@ pub enum LoggingOccurrence {
 ///
 /// When will my log message be output?
 ///
-/// - `Once`: A message with the [`LoggingOccurrence::Once`] value will be published once only regardless of any other conditions
-/// - `SkipFirst`: A message with the [`LoggingOccurrence::SkipFirst`] value will never be published on the first encounter regardless
-///                of any other conditions.  After the first encounter, the behaviour is identical to the [`LoggingOccurrence::Always`]
-///                setting.
+/// - `Once`: A message with the [`LoggingOccurrence::Once`] value will be published once only
+///           regardless of any other conditions
+/// - `SkipFirst`: A message with the [`LoggingOccurrence::SkipFirst`] value will never be published
+///                on the first encounter regardless of any other conditions.  After the first
+///                encounter, the behaviour is identical to the [`LoggingOccurrence::Always`] setting.
 /// - `Always`: The log message will be output if all additional conditions are true:
-///     - The current time + the `publish_interval` > the last time the message was published.  This is always TRUE if the `publish_interval` is zero
-///     - The `log_if_true` expression evaluates to TRUE.  The default value for the `log_if_true` field is TRUE.
+///     - The current time + the `publish_interval` > the last time the message was published.
+///         - The default value for `publish_interval` is 0, i.e. the interval check will always pass
+///     - The `log_if_true` expression evaluates to TRUE.
+///         - The default value for the `log_if_true` field is TRUE.
 pub struct LogConditions {
     /// Specify when a log message should be published (See[`LoggingOccurrence`] above)
     pub occurs: LoggingOccurrence,
-    /// Specify the publication interval of the message.  A value of ZERO (0) indicates that the message should be
-    /// published every time, otherwise, the message will only be published once the specified interval has elapsed
-    /// This field is typically used to limit the output from high-frequency messages, e.g. instead of publishing
-    /// a log message every 10 milliseconds, the `publish_interval` can be configured such that the message is published
-    /// every 10 seconds.
+    /// Specify the publication interval of the message.  A value of ZERO (0) indicates that the
+    /// message should be published every time, otherwise, the message will only be published once
+    /// the specified interval has elapsed.
+    /// This field is typically used to limit the output from high-frequency messages, e.g. instead
+    /// of publishing a log message every 10 milliseconds, the `publish_interval` can be configured
+    /// such that the message is published every 10 seconds.
     pub publish_interval: Duration,
     /// The log message will only published if the specified expression evaluates to true
     pub log_if_true: bool,
@@ -157,7 +161,7 @@ impl LogConditions {
     }
 
     /// Throttle the message to the supplied publish_interval
-    /// e.g. if `publish_interval` is set to 1000ms the supplied log message will be published once a second
+    /// e.g. set `publish_interval` to 1000ms to limit publishing to once a second
     pub fn throttle(publish_interval: Duration) -> Self {
         Self {
             occurs: LoggingOccurrence::Always,
@@ -182,10 +186,12 @@ impl LogConditions {
 ///
 /// The macro supports two general calling formats:
 /// 1. Plain message string e.g. as per println! macro
-/// 2. With calling conditions that provide some restrictions on the output of the message (see [`LogConditions`] above)
+/// 2. With calling conditions that provide some restrictions on the output of the message
+/// (see [`LogConditions`] above)
 ///
-/// It is expected that, typically, the macro will be called using one of the wrapper macros, e.g. log_debug!, etc, however
-/// it is relatively straight forward to call the macro directly if you really want to.
+/// It is expected that, typically, the macro will be called using one of the wrapper macros,
+/// e.g. log_debug!, etc, however, it is relatively straight forward to call the macro directly
+/// if you really want to.
 ///
 /// # Examples
 ///
@@ -194,7 +200,9 @@ impl LogConditions {
 /// log_debug!(&node.name(), "Simple message {some_variable}");
 /// log_fatal!(&node.name(), "Simple message from {}", node.name());
 /// log_warn!(&node.name(), LogConditions::once(), "Only log this the first time");
-/// log_error!(&node.name(), LogConditions::skip_first_throttle(Duration::from_millis(1000)), "Noisy error that we expect the first time");
+/// log_error!(&node.name(),
+///            LogConditions::skip_first_throttle(Duration::from_millis(1000)),
+///            "Noisy error that we expect the first time");
 ///
 /// log_info!(&node.name(), LogConditions { occurs: LoggingOccurrence::Always,
 ///                                         publish_interval: Duration::from_millis(1000),
@@ -204,14 +212,16 @@ impl LogConditions {
 ///
 /// # Panics
 ///
-/// It is theoretically possible for the call to panic if the Mutex used for the throttling is poisoned
-/// although this should not be possible.
+/// It is theoretically possible for the call to panic if the Mutex used for the throttling is
+/// poisoned although this should not be possible.
 #[macro_export]
 macro_rules! log_with_conditions {
-    // The variable args captured by the $(, $($args:tt)*)?)) code allows us to omit (or include) parameters in the simple message case,
-    // e.g. to write log_error!(<logger>, "Log with no params"); OR log_error!(<logger>, "Log with useful info {}", error_reason);
+    // The variable args captured by the $(, $($args:tt)*)?)) code allows us to omit (or include)
+    // parameters in the simple message case, e.g. to write
+    // ```
+    // log_error!(<logger>, "Log with no params"); // OR
+    // log_error!(<logger>, "Log with useful info {}", error_reason);
     ($severity: expr, $logger_name: expr, $msg_start: literal $(, $($args:tt)*)?) => {
-        // log_stuff($logger, LogConditions::new(), &std::fmt::format(format_args!($msg_start, $($($args)*)?)));
         $crate::log(&std::fmt::format(format_args!($msg_start, $($($args)*)?)), $logger_name, file!(), line!(), $severity);
     };
     ($severity: expr, $logger_name: expr, $conditions: expr, $($args:tt)*) => {
@@ -246,15 +256,15 @@ macro_rules! log_with_conditions {
             $crate::LoggingOccurrence::Always => (),
         }
 
-        // If we have a throttle period AND logging has not already been disabled due to SkipFirst (and technically Once) settings
+        // If we have a throttle period AND logging has not already been disabled due to SkipFirst settings
         if log_conditions.publish_interval > std::time::Duration::ZERO && allow_logging {
             let mut ignore_first_timeout = false;
             // Need to initialise to a constant
             static LAST_LOG_TIME: Mutex<std::time::SystemTime> = Mutex::new(std::time::SystemTime::UNIX_EPOCH);
 
             static INIT_LAST_LOG_TIME: std::sync::Once = std::sync::Once::new();
-            // Set the last log time to "now", but let us log the message the first time we hit this code, i.e. initial
-            // behaviour is expired.
+            // Set the last log time to "now", but let us log the message the first time we hit this
+            // code, i.e. initial behaviour is expired.
             // Note: If this is part of a SkipFirst macro call, we will only hit this code on the second iteration.
             INIT_LAST_LOG_TIME.call_once(|| {
                 let mut last_log_time = LAST_LOG_TIME.lock().unwrap();
@@ -273,8 +283,9 @@ macro_rules! log_with_conditions {
             }
         }
 
-        // At this point we've validated the skip/throttle operations, and we now check that any expression
-        // supplied also evaluates to true, e.g. if timer has expired but expression is false, we won't print
+        // At this point we've validated the skip/throttle operations, and we now check that any
+        // expression supplied also evaluates to true, e.g. if timer has expired but expression is
+        // false, we won't print
         if (allow_logging && log_conditions.log_if_true)
         {
             $crate::log(&std::fmt::format(format_args!($($args)*)), $logger_name, file!(), line!(), $severity);
