@@ -72,7 +72,7 @@ pub struct Node {
 /// dependency on the lifetime of its `rcl_context_t` by ensuring that this
 /// dependency is [dropped after][1] the `rcl_node_t`.
 /// Note: we capture the rcl_node_t returned from rcl_get_zero_initialized_node()
-/// to guarantee that the lifetime of node handle exists until we drop the NodeHandle
+/// to guarantee that the node handle exists until we drop the NodeHandle
 /// instance. This addresses an issue where previously the address of the variable
 /// in the builder.rs was being used, and whose lifespan was (just) shorter than the
 /// NodeHandle instance.
