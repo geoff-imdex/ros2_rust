@@ -126,7 +126,7 @@ where
                 // * The rcl_node is kept alive by the NodeHandle because it is a dependency of the subscription.
                 // * The topic name and the options are copied by this function, so they can be dropped afterwards.
                 // * The entity lifecycle mutex is locked to protect against the risk of global
-                //   variables in the rmw implementation being unsafely modified during cleanup.
+                //   variables in the rmw implementation being unsafely modified during initialization.
                 rcl_subscription_init(
                     &mut rcl_subscription,
                     &*rcl_node,

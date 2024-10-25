@@ -98,7 +98,7 @@ impl Timer {
                 // * The period is copied into this function so it can be dropped afterwards.
                 // * The callback is None / nullptr so doesn't need to be kept alive.
                 // * The entity lifecycle mutex is locked to protect against the risk of global
-                //   variables in the rmw implementation being unsafely modified during cleanup.
+                //   variables in the rmw implementation being unsafely modified during initialization.
                 rcl_timer_init(
                     &mut rcl_timer,
                     &mut *rcl_clock,
