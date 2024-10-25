@@ -20,6 +20,7 @@ mod service;
 mod subscription;
 mod time;
 mod time_source;
+mod timer;
 mod vendor;
 mod wait;
 
