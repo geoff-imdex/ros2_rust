@@ -1,12 +1,16 @@
 use crate::{
     clock::Clock,
     rcl_bindings::{
-        rcl_get_zero_initialized_timer, rcl_timer_fini, rcl_timer_init, rcl_timer_t,
+        rcl_get_zero_initialized_timer, rcl_timer_call, rcl_timer_cancel,
+        rcl_timer_exchange_period, rcl_timer_fini, rcl_timer_get_period,
+        rcl_timer_get_time_since_last_call, rcl_timer_get_time_until_next_call, rcl_timer_init,
+        rcl_timer_is_canceled, rcl_timer_is_ready, rcl_timer_reset, rcl_timer_t,
         rcutils_get_default_allocator,
     },
     NodeHandle, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
 };
 use std::{
+    i64,
     sync::{atomic::AtomicBool, Arc, Mutex, MutexGuard},
     time::Duration,
 };
@@ -21,7 +25,7 @@ unsafe impl Send for rcl_timer_t {}
 /// [dropped after][1] the `rcl_timer_t`.
 ///
 /// [1]: <https://doc.rust-lang.org/reference/destructors.html>
-pub(crate) struct TimerHandle {
+pub struct TimerHandle {
     rcl_timer: Mutex<rcl_timer_t>,
     clock: Clock,
     node_handle: Arc<NodeHandle>,
@@ -54,12 +58,14 @@ pub(crate) trait TimerBase: Send + Sync {
     fn execute(&self) -> Result<(), RclrsError>;
 }
 
-struct Timer {
+pub struct Timer {
     callback: Arc<dyn Fn(&mut Timer) + Send + Sync>,
     handle: TimerHandle,
 }
 
 impl Timer {
+    /// Creates a new `Timer` with the given period and callback.
+    /// Periods greater than i64::MAX nanoseconds will saturate to i64::MAX.
     pub(crate) fn new<F>(
         node_handle: Arc<NodeHandle>,
         clock: Clock,
@@ -82,7 +88,7 @@ impl Timer {
         let mut rcl_context = node_handle_clone.context_handle.rcl_context.lock().unwrap();
 
         // core::time::Duration will always be >= 0, so no need to check for negatives.
-        let period_nanos = period.as_nanos() as i64;
+        let period_nanos = i64::try_from(period.as_nanos()).unwrap_or(i64::MAX);
 
         // SAFETY: No preconditions for this function.
         let allocator = unsafe { rcutils_get_default_allocator() };
@@ -120,6 +126,129 @@ impl Timer {
                 in_use_by_wait_set: Arc::new(AtomicBool::new(false)),
             },
         })
+    }
+
+    /// Calculates if the timer is ready to be called.
+    /// Returns true if the timer is due or past due to be called.
+    pub fn is_ready(&self) -> Result<bool, RclrsError> {
+        let mut timer = self.handle.lock();
+        let mut is_ready = false;
+        // SAFETY:
+        // * The timer is initialized, which is guaranteed by the constructor.
+        // * The is_ready pointer is allocated on the stack and is valid for the duration of this function.
+        unsafe {
+            rcl_timer_is_ready(&mut *timer, &mut is_ready).ok()?;
+        }
+        Ok(is_ready)
+    }
+
+    /// Get the time until the next call of the timer is due. Saturates to 0 if the timer is ready.
+    pub fn time_until_next_call(&self) -> Result<Duration, RclrsError> {
+        let mut timer = self.handle.lock();
+        let mut remaining_time = 0;
+        // SAFETY:
+        // * The timer is initialized, which is guaranteed by the constructor.
+        // * The remaining_time pointer is allocated on the stack and is valid for the duration of this function.
+        unsafe {
+            rcl_timer_get_time_until_next_call(&mut *timer, &mut remaining_time).ok()?;
+        }
+        Ok(Duration::from_nanos(
+            u64::try_from(remaining_time).unwrap_or(0),
+        ))
+    }
+
+    /// Get the time since the last call of the timer.
+    /// Calling this function within a callback will not return the time since the
+    /// previous call but instead the time since the current callback was called.
+    /// Saturates to 0 if the timer was last called in the future (i.e. the clock jumped).
+    pub fn time_since_last_call(&self) -> Result<Duration, RclrsError> {
+        let mut timer = self.handle.lock();
+        let mut elapsed_time = 0;
+        // SAFETY:
+        // * The timer is initialized, which is guaranteed by the constructor.
+        // * The elapsed_time pointer is allocated on the stack and is valid for the duration of this function.
+        unsafe {
+            rcl_timer_get_time_since_last_call(&mut *timer, &mut elapsed_time).ok()?;
+        }
+        Ok(Duration::from_nanos(
+            u64::try_from(elapsed_time).unwrap_or(0),
+        ))
+    }
+
+    /// Get the period of the timer.
+    pub fn get_period(&self) -> Result<Duration, RclrsError> {
+        let timer = self.handle.lock();
+        let mut period = 0;
+        // SAFETY:
+        // * The timer is initialized, which is guaranteed by the constructor.
+        // * The period pointer is allocated on the stack and is valid for the duration of this function.
+        unsafe {
+            rcl_timer_get_period(&*timer, &mut period).ok()?;
+        }
+        // The period should never be negative as we only expose (unsigned) Duration structs
+        // for setting, but if it is, saturate to 0.
+        Ok(Duration::from_nanos(u64::try_from(period).unwrap_or(0)))
+    }
+
+    /// Set the period of the timer. Periods greater than i64::MAX nanoseconds will saturate to i64::MAX.
+    pub fn set_period(&self, period: &Duration) -> Result<(), RclrsError> {
+        let timer = self.handle.lock();
+        let new_period = i64::try_from(period.as_nanos()).unwrap_or(i64::MAX);
+        let mut old_period = 0;
+        // SAFETY:
+        // * The timer is initialized, which is guaranteed by the constructor.
+        // * The new_period is copied into this function so it can be dropped afterwards.
+        // * The old_period pointer is allocated on the stack and is valid for the duration of this function.
+        unsafe {
+            rcl_timer_exchange_period(&*timer, new_period, &mut old_period).ok()?;
+        }
+        Ok(())
+    }
+
+    /// Cancel the timer so it will no longer be fired by the waitset. Can be restarted with [`reset`][1].
+    ///
+    /// [1]: crate::timer::Timer::reset
+    pub fn cancel(&self) -> Result<(), RclrsError> {
+        let mut timer = self.handle.lock();
+        // SAFETY: The timer is initialized, which is guaranteed by the constructor.
+        unsafe {
+            rcl_timer_cancel(&mut *timer).ok()?;
+        }
+        Ok(())
+    }
+
+    /// Check if the timer has been cancelled.
+    pub fn is_canceled(&self) -> Result<bool, RclrsError> {
+        let timer = self.handle.lock();
+        let mut cancelled = false;
+        // SAFETY:
+        // * The timer is initialized, which is guaranteed by the constructor.
+        // * The new_period is copied into this function so it can be dropped afterwards.
+        // * The old_period pointer is allocated on the stack and is valid for the duration of this function.
+        unsafe {
+            rcl_timer_is_canceled(&*timer, &mut cancelled).ok()?;
+        }
+        Ok(cancelled)
+    }
+
+    /// Set the timer's last call time to now. Additionally marks cancelled timers as not-cancelled.
+    pub fn reset(&self) -> Result<(), RclrsError> {
+        let mut timer = self.handle.lock();
+        // SAFETY: The timer is initialized, which is guaranteed by the constructor.
+        unsafe {
+            rcl_timer_reset(&mut *timer).ok()?;
+        }
+        Ok(())
+    }
+
+    /// Internal function to check the timer is still valid and set the last call time in rcl.
+    fn call_rcl(&self) -> Result<(), RclrsError> {
+        let mut timer = self.handle.lock();
+        // SAFETY: Safe if the timer is initialized, which is guaranteed by the constructor.
+        unsafe {
+            rcl_timer_call(&mut *timer).ok()?;
+        }
+        Ok(())
     }
 }
 
