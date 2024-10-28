@@ -61,17 +61,20 @@ pub trait TimerBase: Send + Sync {
 
 /// A struct for triggering a callback at regular intervals.
 ///
-/// Calling [`spin_once`][1] or [`spin`][2] on the timer's node will wait until the configured
-/// period of time has passed since the timer was last called (or since it was created) before
-/// triggering the timer's callback.
+/// If created via [`Node::create_timer()`][1], calling [`spin_once`][2] or [`spin`][3]
+/// on the timer's node will wait until the configured period of time has passed since
+/// the timer was last called (or since it was created) before triggering the timer's callback.
 ///
-/// The only available way to instantiate timers is via [`Node::create_timer()`][3], this
-/// is to ensure that [`Node`][4]s can track all the timers that have been created.
+/// If created via [`Timer::new`], [`is_ready`][4] must be polled until the timer has
+/// expired, after which [`execute`][5] must be called to trigger the timer's callback.
+/// The timer can also be added to a [`WaitSet`][6] to block until it is ready.
 ///
-/// [1]: crate::spin_once
-/// [2]: crate::spin
-/// [3]: crate::Node::create_timer
-/// [4]: crate::Node
+/// [1]: crate::Node::create_timer
+/// [2]: crate::spin_once
+/// [3]: crate::spin
+/// [4]: crate::Timer::is_ready
+/// [5]: crate::Timer::execute
+/// [6]: crate::WaitSet
 pub struct Timer {
     callback: Arc<Mutex<dyn FnMut(&mut Timer) + Send + Sync>>,
     handle: TimerHandle,
@@ -80,6 +83,12 @@ pub struct Timer {
 impl Timer {
     /// Creates a new `Timer` with the given period and callback.
     /// Periods greater than i64::MAX nanoseconds will saturate to i64::MAX.
+    ///
+    /// Note that most of the time [`Node::create_timer`][1] is the better way to make
+    /// a new timer, as that will allow the timer to be triggered by spinning the node.
+    /// Timers created with [`Timer::new`] must be checked and executed by the user.
+    ///
+    /// [1]: crate::Node::create_timer
     pub fn new<F>(
         context: &Context,
         clock: Clock,
