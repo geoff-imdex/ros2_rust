@@ -111,7 +111,6 @@ impl Timer {
     where
         F: FnMut(&mut Timer) + 'static + Send + Sync,
     {
-        // Move the callback to our reference counted container so rcl_callback can use it
         let callback = Arc::new(Mutex::new(callback));
 
         // SAFETY: Getting a zero-initialized value is always safe.
