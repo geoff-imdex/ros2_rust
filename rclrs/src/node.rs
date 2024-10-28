@@ -357,7 +357,7 @@ impl Node {
         F: Fn(&mut Timer) + 'static + Send + Sync,
     {
         let timer = Arc::new(Mutex::new(Timer::new(
-            Arc::clone(&self.handle),
+            Arc::clone(&self.handle.context_handle),
             self.get_clock(),
             period,
             callback,

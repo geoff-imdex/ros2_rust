@@ -7,7 +7,7 @@ use crate::{
         rcl_timer_is_canceled, rcl_timer_is_ready, rcl_timer_reset, rcl_timer_t,
         rcutils_get_default_allocator,
     },
-    NodeHandle, RclReturnCode, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
+    ContextHandle, RclReturnCode, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
 };
 use std::{
     i64,
@@ -28,7 +28,7 @@ unsafe impl Send for rcl_timer_t {}
 pub struct TimerHandle {
     rcl_timer: Mutex<rcl_timer_t>,
     _clock: Clock,
-    _node_handle: Arc<NodeHandle>,
+    _context_handle: Arc<ContextHandle>,
     pub(crate) in_use_by_wait_set: Arc<AtomicBool>,
 }
 
@@ -81,7 +81,7 @@ impl Timer {
     /// Creates a new `Timer` with the given period and callback.
     /// Periods greater than i64::MAX nanoseconds will saturate to i64::MAX.
     pub(crate) fn new<F>(
-        node_handle: Arc<NodeHandle>,
+        context_handle: Arc<ContextHandle>,
         clock: Clock,
         period: Duration,
         callback: F,
@@ -98,8 +98,8 @@ impl Timer {
         let clock_clone = clock.rcl_clock.clone();
         let mut rcl_clock = clock_clone.lock().unwrap();
 
-        let node_handle_clone = node_handle.clone();
-        let mut rcl_context = node_handle_clone.context_handle.rcl_context.lock().unwrap();
+        let context_handle_clone = context_handle.clone();
+        let mut rcl_context = context_handle_clone.rcl_context.lock().unwrap();
 
         // core::time::Duration will always be >= 0, so no need to check for negatives.
         let period_nanos = i64::try_from(period.as_nanos()).unwrap_or(i64::MAX);
@@ -113,7 +113,7 @@ impl Timer {
                 // * The rcl_timer is zero-initialized as mandated by this function.
                 // * The rcl_clock is kept alive by the Clock within TimerHandle because it is
                 //   a dependency of the timer.
-                // * The rcl_context is kept alive by the NodeHandle within TimerHandle because
+                // * The rcl_context is kept alive by the ContextHandle within TimerHandle because
                 //   it is a dependency of the timer.
                 // * The period is copied into this function so it can be dropped afterwards.
                 // * The callback is None / nullptr so doesn't need to be kept alive.
@@ -136,7 +136,7 @@ impl Timer {
             handle: TimerHandle {
                 rcl_timer: Mutex::new(rcl_timer),
                 _clock: clock,
-                _node_handle: node_handle,
+                _context_handle: context_handle,
                 in_use_by_wait_set: Arc::new(AtomicBool::new(false)),
             },
         })
@@ -304,17 +304,17 @@ impl TimerBase for Timer {
 mod tests {
     use std::time::Duration;
 
-    use crate::{create_node, Context};
+    use crate::{Clock, Context};
 
     use super::Timer;
 
-    // Pass in a new node name each time to avoid logging conflicts.
-    fn new_timer(node_name: &str) -> Timer {
-        let node = create_node(&Context::new([]).unwrap(), node_name).unwrap();
+    fn new_timer() -> Timer {
+        let context = Context::new([]).unwrap();
+        let clock = Clock::system();
 
         let timer = Timer::new(
-            node.handle.clone(),
-            node.get_clock(),
+            context.handle.clone(),
+            clock,
             Duration::from_secs(0),
             |_| {},
         );
@@ -324,12 +324,12 @@ mod tests {
 
     #[test]
     fn creation() {
-        let _ = new_timer("test_timer_creation");
+        let _ = new_timer();
     }
 
     #[test]
     fn is_ready() {
-        let timer = new_timer("test_timer_is_ready");
+        let timer = new_timer();
 
         // Calling is_ready will trigger the debug_assert check on the rcl return value.
         timer.is_ready();
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn time_until_next_call() {
-        let timer = new_timer("test_timer_next_call");
+        let timer = new_timer();
 
         timer
             .time_until_next_call()
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn time_since_last_call() {
-        let timer = new_timer("test_timer_last_call");
+        let timer = new_timer();
 
         // Calling time_since_last_call will trigger the debug_assert check on the rcl return value.
         timer.time_since_last_call();
@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn update_period() {
-        let timer = new_timer("test_timer_update_period");
+        let timer = new_timer();
 
         let new_period = Duration::from_millis(100);
 
@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn cancel_timer() {
-        let timer = new_timer("test_timer_cancel");
+        let timer = new_timer();
 
         // Calling is_canceled will trigger the debug_assert check on the rcl return value.
         assert!(!timer.is_canceled());
@@ -382,7 +382,7 @@ mod tests {
 
     #[test]
     fn reset_canceled_timer() {
-        let timer = new_timer("test_timer_reset");
+        let timer = new_timer();
         timer.cancel();
 
         // Calling reset will trigger the debug_assert check on the rcl return value.
