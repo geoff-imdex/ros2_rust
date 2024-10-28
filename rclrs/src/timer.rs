@@ -69,7 +69,7 @@ impl Timer {
     pub(crate) fn new<F>(
         node_handle: Arc<NodeHandle>,
         clock: Clock,
-        period: &Duration,
+        period: Duration,
         callback: F,
     ) -> Result<Self, RclrsError>
     where
@@ -191,7 +191,7 @@ impl Timer {
     }
 
     /// Set the period of the timer. Periods greater than i64::MAX nanoseconds will saturate to i64::MAX.
-    pub fn set_period(&self, period: &Duration) -> Result<(), RclrsError> {
+    pub fn set_period(&self, period: Duration) -> Result<(), RclrsError> {
         let timer = self.handle.lock();
         let new_period = i64::try_from(period.as_nanos()).unwrap_or(i64::MAX);
         let mut old_period = 0;
@@ -264,4 +264,96 @@ impl TimerBase for Timer {
     }
 }
 
-// tests: timers with 0 periods should return immediately, could be a good test for the timer
+// Timer.rs does very little other than call rcl functions.
+// To keep these tests easy to maintain, most of them just check the rcl functions
+// can be called without returning errors.
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use crate::{create_node, Context};
+
+    use super::Timer;
+
+    // Pass in a new node name each time to avoid logging conflicts.
+    fn new_timer(node_name: &str) -> Timer {
+        let node = create_node(&Context::new([]).unwrap(), node_name).unwrap();
+
+        let timer = Timer::new(
+            node.handle.clone(),
+            node.get_clock(),
+            Duration::from_secs(0),
+            |_| {},
+        );
+
+        timer.expect("Timer::new should not return an error")
+    }
+
+    #[test]
+    fn creation() {
+        let _ = new_timer("test_timer_creation");
+    }
+
+    #[test]
+    fn is_ready() {
+        let timer = new_timer("test_timer_is_ready");
+
+        // Period is 0, so the timer should be already ready
+        timer
+            .is_ready()
+            .expect("Timer::is_ready should not return an error");
+    }
+
+    #[test]
+    fn time_until_next_call() {
+        let timer = new_timer("test_timer_next_call");
+
+        timer
+            .time_until_next_call()
+            .expect("Timer::time_until_next_call should not error");
+    }
+
+    #[test]
+    fn time_since_last_call() {
+        let timer = new_timer("test_timer_last_call");
+
+        timer
+            .time_since_last_call()
+            .expect("Timer::time_since_last_call should not error");
+    }
+
+    #[test]
+    fn update_period() {
+        let timer = new_timer("test_timer_update_period");
+
+        let new_period = Duration::from_millis(100);
+        timer
+            .set_period(new_period.clone())
+            .expect("Timer::set_period should not error");
+
+        let retrieved_period = timer.get_period().unwrap();
+
+        assert_eq!(new_period, retrieved_period);
+    }
+
+    #[test]
+    fn cancel_timer() {
+        let timer = new_timer("test_timer_cancel");
+
+        assert!(!timer.is_canceled().unwrap());
+
+        timer.cancel().unwrap();
+
+        assert!(timer.is_canceled().unwrap());
+    }
+
+    #[test]
+    fn reset_cancelled_timer() {
+        let timer = new_timer("test_timer_reset");
+        timer.cancel().unwrap();
+
+        timer.reset().unwrap();
+
+        assert!(!timer.is_canceled().unwrap());
+    }
+}
