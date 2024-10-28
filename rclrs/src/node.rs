@@ -6,6 +6,7 @@ use std::{
     fmt,
     os::raw::c_char,
     sync::{atomic::AtomicBool, Arc, Mutex, Weak},
+    time::Duration,
     vec::Vec,
 };
 
@@ -16,7 +17,7 @@ use crate::{
     rcl_bindings::*, Client, ClientBase, Clock, Context, ContextHandle, GuardCondition,
     ParameterBuilder, ParameterInterface, ParameterVariant, Parameters, Publisher, QoSProfile,
     RclrsError, Service, ServiceBase, Subscription, SubscriptionBase, SubscriptionCallback,
-    TimeSource, ENTITY_LIFECYCLE_MUTEX,
+    TimeSource, Timer, TimerBase, ENTITY_LIFECYCLE_MUTEX,
 };
 
 // SAFETY: The functions accessing this type, including drop(), shouldn't care about the thread
@@ -47,7 +48,7 @@ unsafe impl Send for rcl_node_t {}
 /// The namespace and name given when creating the node can be overridden through the command line.
 /// In that sense, the parameters to the node creation functions are only the _default_ namespace and
 /// name.
-/// See also the [official tutorial][1] on the command line arguments for ROS nodes, and the
+/// See also the [official tutorial][2] on the command line arguments for ROS nodes, and the
 /// [`Node::namespace()`] and [`Node::name()`] functions for examples.
 ///
 /// ## Rules for valid names
@@ -63,6 +64,7 @@ pub struct Node {
     pub(crate) guard_conditions_mtx: Mutex<Vec<Weak<GuardCondition>>>,
     pub(crate) services_mtx: Mutex<Vec<Weak<dyn ServiceBase>>>,
     pub(crate) subscriptions_mtx: Mutex<Vec<Weak<dyn SubscriptionBase>>>,
+    pub(crate) timers_mtx: Mutex<Vec<Weak<Mutex<dyn TimerBase>>>>,
     time_source: TimeSource,
     parameter: ParameterInterface,
     pub(crate) handle: Arc<NodeHandle>,
@@ -339,6 +341,34 @@ impl Node {
         Ok(subscription)
     }
 
+    /// Create a [`Timer`][1].
+    ///
+    /// A Timer may be modified via the `Arc` returned by this function or from
+    /// within its callback.
+    /// A weak pointer to the `Timer` is stored within this node.
+    ///
+    /// [1]: crate::Timer
+    pub fn create_timer<F>(
+        &self,
+        period: Duration,
+        callback: F,
+    ) -> Result<Arc<Mutex<Timer>>, RclrsError>
+    where
+        F: Fn(&mut Timer) + 'static + Send + Sync,
+    {
+        let timer = Arc::new(Mutex::new(Timer::new(
+            Arc::clone(&self.handle),
+            self.get_clock(),
+            period,
+            callback,
+        )?));
+
+        { self.timers_mtx.lock() }
+            .unwrap()
+            .push(Arc::downgrade(&timer) as Weak<Mutex<dyn TimerBase>>);
+        Ok(timer)
+    }
+
     /// Returns the subscriptions that have not been dropped yet.
     pub(crate) fn live_subscriptions(&self) -> Vec<Arc<dyn SubscriptionBase>> {
         { self.subscriptions_mtx.lock().unwrap() }
@@ -363,6 +393,13 @@ impl Node {
 
     pub(crate) fn live_services(&self) -> Vec<Arc<dyn ServiceBase>> {
         { self.services_mtx.lock().unwrap() }
+            .iter()
+            .filter_map(Weak::upgrade)
+            .collect()
+    }
+
+    pub(crate) fn live_timers(&self) -> Vec<Arc<Mutex<dyn TimerBase>>> {
+        { self.timers_mtx.lock().unwrap() }
             .iter()
             .filter_map(Weak::upgrade)
             .collect()

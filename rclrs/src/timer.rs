@@ -27,8 +27,8 @@ unsafe impl Send for rcl_timer_t {}
 /// [1]: <https://doc.rust-lang.org/reference/destructors.html>
 pub struct TimerHandle {
     rcl_timer: Mutex<rcl_timer_t>,
-    clock: Clock,
-    node_handle: Arc<NodeHandle>,
+    _clock: Clock,
+    _node_handle: Arc<NodeHandle>,
     pub(crate) in_use_by_wait_set: Arc<AtomicBool>,
 }
 
@@ -51,7 +51,7 @@ impl Drop for TimerHandle {
 }
 
 /// Trait to be implemented by concrete [`Timer`]s.
-pub(crate) trait TimerBase: Send + Sync {
+pub trait TimerBase: Send + Sync {
     /// Internal function to get a reference to the `rcl` handle.
     fn handle(&self) -> &TimerHandle;
     /// Tries to call the timer and run the associated callback.
@@ -59,6 +59,19 @@ pub(crate) trait TimerBase: Send + Sync {
     fn execute(&mut self) -> Result<(), RclrsError>;
 }
 
+/// A struct for triggering a callback at regular intervals.
+///
+/// Calling [`spin_once`][1] or [`spin`][2] on the timer's node will wait until the configured
+/// period of time has passed since the timer was last called (or since it was created) before
+/// triggering the timer's callback.
+///
+/// The only available way to instantiate timers is via [`Node::create_timer()`][3], this
+/// is to ensure that [`Node`][4]s can track all the timers that have been created.
+///
+/// [1]: crate::spin_once
+/// [2]: crate::spin
+/// [3]: crate::Node::create_timer
+/// [4]: crate::Node
 pub struct Timer {
     callback: Arc<dyn Fn(&mut Timer) + Send + Sync>,
     handle: TimerHandle,
@@ -122,8 +135,8 @@ impl Timer {
             callback,
             handle: TimerHandle {
                 rcl_timer: Mutex::new(rcl_timer),
-                clock,
-                node_handle,
+                _clock: clock,
+                _node_handle: node_handle,
                 in_use_by_wait_set: Arc::new(AtomicBool::new(false)),
             },
         })

@@ -50,6 +50,7 @@ pub use service::*;
 pub use subscription::*;
 pub use time::*;
 use time_source::*;
+pub use timer::*;
 pub use wait::*;
 
 /// Polls the node for new messages and executes the corresponding callbacks.
