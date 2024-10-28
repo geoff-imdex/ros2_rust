@@ -7,7 +7,7 @@ use crate::{
         rcl_timer_is_canceled, rcl_timer_is_ready, rcl_timer_reset, rcl_timer_t,
         rcutils_get_default_allocator,
     },
-    ContextHandle, RclReturnCode, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
+    Context, ContextHandle, RclReturnCode, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
 };
 use std::{
     i64,
@@ -80,7 +80,20 @@ pub struct Timer {
 impl Timer {
     /// Creates a new `Timer` with the given period and callback.
     /// Periods greater than i64::MAX nanoseconds will saturate to i64::MAX.
-    pub(crate) fn new<F>(
+    pub fn new<F>(
+        context: &Context,
+        clock: Clock,
+        period: Duration,
+        callback: F,
+    ) -> Result<Self, RclrsError>
+    where
+        F: Fn(&mut Timer) + 'static + Send + Sync,
+    {
+        Timer::new_with_context_handle(Arc::clone(&context.handle), clock, period, callback)
+    }
+
+    /// Version of [`Timer::new`] that takes a context handle directly.
+    pub(crate) fn new_with_context_handle<F>(
         context_handle: Arc<ContextHandle>,
         clock: Clock,
         period: Duration,
@@ -310,14 +323,11 @@ mod tests {
 
     fn new_timer() -> Timer {
         let context = Context::new([]).unwrap();
+
+        // This is technically a wall clock, but we have a period of 0 so it won't slow down unit testing.
         let clock = Clock::system();
 
-        let timer = Timer::new(
-            context.handle.clone(),
-            clock,
-            Duration::from_secs(0),
-            |_| {},
-        );
+        let timer = Timer::new(&context, clock, Duration::from_secs(0), |_| {});
 
         timer.expect("Timer::new should not return an error")
     }
