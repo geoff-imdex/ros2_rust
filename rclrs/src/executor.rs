@@ -61,6 +61,10 @@ impl SingleThreadedExecutor {
             for ready_service in ready_entities.services {
                 ready_service.execute()?;
             }
+
+            for ready_timer in ready_entities.timers {
+                ready_timer.lock().unwrap().execute()?;
+            }
         }
 
         Ok(())

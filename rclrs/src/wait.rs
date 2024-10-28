@@ -15,12 +15,16 @@
 // DISTRIBUTION A. Approved for public release; distribution unlimited.
 // OPSEC #4584.
 
-use std::{sync::Arc, time::Duration, vec::Vec};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+    vec::Vec,
+};
 
 use crate::{
     error::{to_rclrs_result, RclReturnCode, RclrsError, ToResult},
     rcl_bindings::*,
-    ClientBase, Context, ContextHandle, Node, ServiceBase, SubscriptionBase,
+    ClientBase, Context, ContextHandle, Node, ServiceBase, SubscriptionBase, TimerBase,
 };
 
 mod exclusivity_guard;
@@ -50,6 +54,8 @@ pub struct WaitSet {
     // The guard conditions that are currently registered in the wait set.
     guard_conditions: Vec<ExclusivityGuard<Arc<GuardCondition>>>,
     services: Vec<ExclusivityGuard<Arc<dyn ServiceBase>>>,
+    // Timers need interior mutability to modify themselves within their callback.
+    timers: Vec<ExclusivityGuard<Arc<Mutex<dyn TimerBase>>>>,
     handle: WaitSetHandle,
 }
 
@@ -63,6 +69,9 @@ pub struct ReadyEntities {
     pub guard_conditions: Vec<Arc<GuardCondition>>,
     /// A list of services that have potentially received requests.
     pub services: Vec<Arc<dyn ServiceBase>>,
+    /// A list of timers that are ready to be called.
+    // Timers need interior mutability to modify themselves within their callback.
+    pub timers: Vec<Arc<Mutex<dyn TimerBase>>>,
 }
 
 impl Drop for rcl_wait_set_t {
@@ -123,6 +132,7 @@ impl WaitSet {
             guard_conditions: Vec::new(),
             clients: Vec::new(),
             services: Vec::new(),
+            timers: Vec::new(),
             handle: WaitSetHandle {
                 rcl_wait_set,
                 context_handle: Arc::clone(&context.handle),
@@ -138,13 +148,14 @@ impl WaitSet {
         let live_clients = node.live_clients();
         let live_guard_conditions = node.live_guard_conditions();
         let live_services = node.live_services();
+        let live_timers = node.live_timers();
         let ctx = Context {
             handle: Arc::clone(&node.handle.context_handle),
         };
         let mut wait_set = WaitSet::new(
             live_subscriptions.len(),
             live_guard_conditions.len(),
-            0,
+            live_timers.len(),
             live_clients.len(),
             live_services.len(),
             0,
@@ -166,6 +177,10 @@ impl WaitSet {
         for live_service in &live_services {
             wait_set.add_service(live_service.clone())?;
         }
+
+        for live_timer in &live_timers {
+            wait_set.add_timer(live_timer.clone())?;
+        }
         Ok(wait_set)
     }
 
@@ -178,6 +193,7 @@ impl WaitSet {
         self.guard_conditions.clear();
         self.clients.clear();
         self.services.clear();
+        self.timers.clear();
         // This cannot fail – the rcl_wait_set_clear function only checks that the input handle is
         // valid, which it always is in our case. Hence, only debug_assert instead of returning
         // Result.
@@ -311,6 +327,39 @@ impl WaitSet {
         Ok(())
     }
 
+    /// Adds a timer to the wait set.
+    ///
+    /// # Errors
+    /// - If the timer was already added to this wait set or another one,
+    ///   [`AlreadyAddedToWaitSet`][1] will be returned
+    /// - If the number of timers in the wait set is larger than the
+    ///   capacity set in [`WaitSet::new`], [`WaitSetFull`][2] will be returned
+    ///
+    /// [1]: crate::RclrsError
+    /// [2]: crate::RclReturnCode
+    pub fn add_timer(&mut self, timer: Arc<Mutex<dyn TimerBase>>) -> Result<(), RclrsError> {
+        let exclusive_timer = ExclusivityGuard::new(
+            Arc::clone(&timer),
+            Arc::clone(&timer.lock().unwrap().handle().in_use_by_wait_set),
+        )?;
+        unsafe {
+            // SAFETY:
+            // * The WaitSet is initialized, which is guaranteed by the constructor.
+            // * Timer pointer will remain valid for as long as the wait set exists,
+            //   because it's stored in self.timers.
+            // * Null pointer for `index` is explicitly allowed and doesn't need
+            //   to be kept alive.
+            rcl_wait_set_add_timer(
+                &mut self.handle.rcl_wait_set,
+                &*timer.lock().unwrap().handle().lock(),
+                core::ptr::null_mut(),
+            )
+        }
+        .ok()?;
+        self.timers.push(exclusive_timer);
+        Ok(())
+    }
+
     /// Blocks until the wait set is ready, or until the timeout has been exceeded.
     ///
     /// If the timeout is `None` then this function will block indefinitely until
@@ -365,6 +414,7 @@ impl WaitSet {
             clients: Vec::new(),
             guard_conditions: Vec::new(),
             services: Vec::new(),
+            timers: Vec::new(),
         };
         for (i, subscription) in self.subscriptions.iter().enumerate() {
             // SAFETY: The `subscriptions` entry is an array of pointers, and this dereferencing is
@@ -407,6 +457,16 @@ impl WaitSet {
             let wait_set_entry = unsafe { *self.handle.rcl_wait_set.services.add(i) };
             if !wait_set_entry.is_null() {
                 ready_entities.services.push(Arc::clone(&service.waitable));
+            }
+        }
+
+        for (i, timer) in self.timers.iter().enumerate() {
+            // SAFETY: The `timers` entry is an array of pointers, and this dereferencing is
+            // equivalent to
+            // https://github.com/ros2/rcl/blob/35a31b00a12f259d492bf53c0701003bd7f1745c/rcl/include/rcl/wait.h#L419
+            let wait_set_entry = unsafe { *self.handle.rcl_wait_set.timers.add(i) };
+            if !wait_set_entry.is_null() {
+                ready_entities.timers.push(Arc::clone(&timer.waitable));
             }
         }
         Ok(ready_entities)
