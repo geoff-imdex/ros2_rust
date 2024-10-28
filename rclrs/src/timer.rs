@@ -73,7 +73,7 @@ pub trait TimerBase: Send + Sync {
 /// [3]: crate::Node::create_timer
 /// [4]: crate::Node
 pub struct Timer {
-    callback: Arc<dyn Fn(&mut Timer) + Send + Sync>,
+    callback: Arc<Mutex<dyn FnMut(&mut Timer) + Send + Sync>>,
     handle: TimerHandle,
 }
 
@@ -87,7 +87,7 @@ impl Timer {
         callback: F,
     ) -> Result<Self, RclrsError>
     where
-        F: Fn(&mut Timer) + 'static + Send + Sync,
+        F: FnMut(&mut Timer) + 'static + Send + Sync,
     {
         Timer::new_with_context_handle(Arc::clone(&context.handle), clock, period, callback)
     }
@@ -100,10 +100,10 @@ impl Timer {
         callback: F,
     ) -> Result<Self, RclrsError>
     where
-        F: Fn(&mut Timer) + 'static + Send + Sync,
+        F: FnMut(&mut Timer) + 'static + Send + Sync,
     {
         // Move the callback to our reference counted container so rcl_callback can use it
-        let callback = Arc::new(callback);
+        let callback = Arc::new(Mutex::new(callback));
 
         // SAFETY: Getting a zero-initialized value is always safe.
         let mut rcl_timer = unsafe { rcl_get_zero_initialized_timer() };
@@ -227,6 +227,11 @@ impl Timer {
     }
 
     /// Set the period of the timer. Periods greater than i64::MAX nanoseconds will saturate to i64::MAX.
+    ///
+    /// The updated period will not take affect until either [`reset`][1] is called
+    /// or the timer next expires, whichever comes first.
+    ///
+    /// [1]: crate::Timer::reset
     pub fn set_period(&self, period: Duration) {
         let timer = self.handle.lock();
         let new_period = i64::try_from(period.as_nanos()).unwrap_or(i64::MAX);
@@ -304,7 +309,7 @@ impl TimerBase for Timer {
         self.call_rcl()?;
 
         let callback = self.callback.clone();
-        callback(self);
+        (*callback.lock().unwrap())(self);
 
         Ok(())
     }
