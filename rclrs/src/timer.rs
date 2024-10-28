@@ -7,7 +7,7 @@ use crate::{
         rcl_timer_is_canceled, rcl_timer_is_ready, rcl_timer_reset, rcl_timer_t,
         rcutils_get_default_allocator,
     },
-    NodeHandle, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
+    NodeHandle, RclReturnCode, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
 };
 use std::{
     i64,
@@ -130,19 +130,24 @@ impl Timer {
 
     /// Calculates if the timer is ready to be called.
     /// Returns true if the timer is due or past due to be called.
-    pub fn is_ready(&self) -> Result<bool, RclrsError> {
+    /// Returns false if the timer is not yet due or has been canceled.
+    pub fn is_ready(&self) -> bool {
         let mut timer = self.handle.lock();
         let mut is_ready = false;
         // SAFETY:
         // * The timer is initialized, which is guaranteed by the constructor.
         // * The is_ready pointer is allocated on the stack and is valid for the duration of this function.
-        unsafe {
-            rcl_timer_is_ready(&mut *timer, &mut is_ready).ok()?;
-        }
-        Ok(is_ready)
+        let ret = unsafe { rcl_timer_is_ready(&mut *timer, &mut is_ready) };
+
+        // rcl_timer_is_ready should only error if incorrect arguments are given or something isn't initialised,
+        // both of which we control in this function.
+        debug_assert_eq!(RclReturnCode::try_from(ret).unwrap(), RclReturnCode::Ok);
+
+        is_ready
     }
 
     /// Get the time until the next call of the timer is due. Saturates to 0 if the timer is ready.
+    /// Returns [`RclReturnCode::TimerCanceled`] as an error if the timer has already been canceled.
     pub fn time_until_next_call(&self) -> Result<Duration, RclrsError> {
         let mut timer = self.handle.lock();
         let mut remaining_time = 0;
@@ -161,37 +166,41 @@ impl Timer {
     /// Calling this function within a callback will not return the time since the
     /// previous call but instead the time since the current callback was called.
     /// Saturates to 0 if the timer was last called in the future (i.e. the clock jumped).
-    pub fn time_since_last_call(&self) -> Result<Duration, RclrsError> {
+    pub fn time_since_last_call(&self) -> Duration {
         let mut timer = self.handle.lock();
         let mut elapsed_time = 0;
         // SAFETY:
         // * The timer is initialized, which is guaranteed by the constructor.
         // * The elapsed_time pointer is allocated on the stack and is valid for the duration of this function.
-        unsafe {
-            rcl_timer_get_time_since_last_call(&mut *timer, &mut elapsed_time).ok()?;
-        }
-        Ok(Duration::from_nanos(
-            u64::try_from(elapsed_time).unwrap_or(0),
-        ))
+        let ret = unsafe { rcl_timer_get_time_since_last_call(&mut *timer, &mut elapsed_time) };
+
+        // rcl_timer_get_time_since_last_call should only error if incorrect arguments are given
+        // or something isn't initialised, both of which we control in this function.
+        debug_assert_eq!(RclReturnCode::try_from(ret).unwrap(), RclReturnCode::Ok);
+
+        Duration::from_nanos(u64::try_from(elapsed_time).unwrap_or(0))
     }
 
     /// Get the period of the timer.
-    pub fn get_period(&self) -> Result<Duration, RclrsError> {
+    pub fn get_period(&self) -> Duration {
         let timer = self.handle.lock();
         let mut period = 0;
         // SAFETY:
         // * The timer is initialized, which is guaranteed by the constructor.
         // * The period pointer is allocated on the stack and is valid for the duration of this function.
-        unsafe {
-            rcl_timer_get_period(&*timer, &mut period).ok()?;
-        }
+        let ret = unsafe { rcl_timer_get_period(&*timer, &mut period) };
+
+        // rcl_timer_get_period should only error if incorrect arguments are given
+        // or something isn't initialised, both of which we control in this function.
+        debug_assert_eq!(RclReturnCode::try_from(ret).unwrap(), RclReturnCode::Ok);
+
         // The period should never be negative as we only expose (unsigned) Duration structs
         // for setting, but if it is, saturate to 0.
-        Ok(Duration::from_nanos(u64::try_from(period).unwrap_or(0)))
+        Duration::from_nanos(u64::try_from(period).unwrap_or(0))
     }
 
     /// Set the period of the timer. Periods greater than i64::MAX nanoseconds will saturate to i64::MAX.
-    pub fn set_period(&self, period: Duration) -> Result<(), RclrsError> {
+    pub fn set_period(&self, period: Duration) {
         let timer = self.handle.lock();
         let new_period = i64::try_from(period.as_nanos()).unwrap_or(i64::MAX);
         let mut old_period = 0;
@@ -199,49 +208,55 @@ impl Timer {
         // * The timer is initialized, which is guaranteed by the constructor.
         // * The new_period is copied into this function so it can be dropped afterwards.
         // * The old_period pointer is allocated on the stack and is valid for the duration of this function.
-        unsafe {
-            rcl_timer_exchange_period(&*timer, new_period, &mut old_period).ok()?;
-        }
-        Ok(())
+        let ret = unsafe { rcl_timer_exchange_period(&*timer, new_period, &mut old_period) };
+
+        // rcl_timer_exchange_period should only error if incorrect arguments are given
+        // or something isn't initialised, both of which we control in this function.
+        debug_assert_eq!(RclReturnCode::try_from(ret).unwrap(), RclReturnCode::Ok);
     }
 
-    /// Cancel the timer so it will no longer be fired by the waitset. Can be restarted with [`reset`][1].
+    /// Cancel the timer so it will no longer return ready. Can be restarted with [`reset`][1].
     ///
     /// [1]: crate::timer::Timer::reset
-    pub fn cancel(&self) -> Result<(), RclrsError> {
+    pub fn cancel(&self) {
         let mut timer = self.handle.lock();
         // SAFETY: The timer is initialized, which is guaranteed by the constructor.
-        unsafe {
-            rcl_timer_cancel(&mut *timer).ok()?;
-        }
-        Ok(())
+        let ret = unsafe { rcl_timer_cancel(&mut *timer) };
+
+        // rcl_timer_cancel should only error if incorrect arguments are given
+        // or something isn't initialised, both of which we control in this function.
+        debug_assert_eq!(RclReturnCode::try_from(ret).unwrap(), RclReturnCode::Ok);
     }
 
-    /// Check if the timer has been cancelled.
-    pub fn is_canceled(&self) -> Result<bool, RclrsError> {
+    /// Check if the timer has been canceled.
+    pub fn is_canceled(&self) -> bool {
         let timer = self.handle.lock();
-        let mut cancelled = false;
+        let mut canceled = false;
         // SAFETY:
         // * The timer is initialized, which is guaranteed by the constructor.
-        // * The new_period is copied into this function so it can be dropped afterwards.
-        // * The old_period pointer is allocated on the stack and is valid for the duration of this function.
-        unsafe {
-            rcl_timer_is_canceled(&*timer, &mut cancelled).ok()?;
-        }
-        Ok(cancelled)
+        // * The canceled pointer is allocated on the stack and is valid for the duration of this function.
+        let ret = unsafe { rcl_timer_is_canceled(&*timer, &mut canceled) };
+
+        // rcl_timer_is_canceled should only error if incorrect arguments are given
+        // or something isn't initialised, both of which we control in this function.
+        debug_assert_eq!(RclReturnCode::try_from(ret).unwrap(), RclReturnCode::Ok);
+
+        canceled
     }
 
-    /// Set the timer's last call time to now. Additionally marks cancelled timers as not-cancelled.
-    pub fn reset(&self) -> Result<(), RclrsError> {
+    /// Set the timer's last call time to now. Additionally marks canceled timers as not-canceled.
+    pub fn reset(&self) {
         let mut timer = self.handle.lock();
         // SAFETY: The timer is initialized, which is guaranteed by the constructor.
-        unsafe {
-            rcl_timer_reset(&mut *timer).ok()?;
-        }
-        Ok(())
+        let ret = unsafe { rcl_timer_reset(&mut *timer) };
+
+        // rcl_timer_reset should only error if incorrect arguments are given
+        // or something isn't initialised, both of which we control in this function.
+        debug_assert_eq!(RclReturnCode::try_from(ret).unwrap(), RclReturnCode::Ok);
     }
 
     /// Internal function to check the timer is still valid and set the last call time in rcl.
+    /// Returns [`RclReturnCode::TimerCanceled`] as an error if the timer has already been canceled.
     fn call_rcl(&self) -> Result<(), RclrsError> {
         let mut timer = self.handle.lock();
         // SAFETY: Safe if the timer is initialized, which is guaranteed by the constructor.
@@ -298,10 +313,8 @@ mod tests {
     fn is_ready() {
         let timer = new_timer("test_timer_is_ready");
 
-        // Period is 0, so the timer should be already ready
-        timer
-            .is_ready()
-            .expect("Timer::is_ready should not return an error");
+        // Calling is_ready will trigger the debug_assert check on the rcl return value.
+        timer.is_ready();
     }
 
     #[test]
@@ -317,9 +330,8 @@ mod tests {
     fn time_since_last_call() {
         let timer = new_timer("test_timer_last_call");
 
-        timer
-            .time_since_last_call()
-            .expect("Timer::time_since_last_call should not error");
+        // Calling time_since_last_call will trigger the debug_assert check on the rcl return value.
+        timer.time_since_last_call();
     }
 
     #[test]
@@ -327,11 +339,12 @@ mod tests {
         let timer = new_timer("test_timer_update_period");
 
         let new_period = Duration::from_millis(100);
-        timer
-            .set_period(new_period.clone())
-            .expect("Timer::set_period should not error");
 
-        let retrieved_period = timer.get_period().unwrap();
+        // Calling set_period will trigger the debug_assert check on the rcl return value.
+        timer.set_period(new_period.clone());
+
+        // Calling get_period will trigger the debug_assert check on the rcl return value.
+        let retrieved_period = timer.get_period();
 
         assert_eq!(new_period, retrieved_period);
     }
@@ -340,20 +353,23 @@ mod tests {
     fn cancel_timer() {
         let timer = new_timer("test_timer_cancel");
 
-        assert!(!timer.is_canceled().unwrap());
+        // Calling is_canceled will trigger the debug_assert check on the rcl return value.
+        assert!(!timer.is_canceled());
 
-        timer.cancel().unwrap();
+        // Calling cancel will trigger the debug_assert check on the rcl return value.
+        timer.cancel();
 
-        assert!(timer.is_canceled().unwrap());
+        assert!(timer.is_canceled());
     }
 
     #[test]
-    fn reset_cancelled_timer() {
+    fn reset_canceled_timer() {
         let timer = new_timer("test_timer_reset");
-        timer.cancel().unwrap();
+        timer.cancel();
 
-        timer.reset().unwrap();
+        // Calling reset will trigger the debug_assert check on the rcl return value.
+        timer.reset();
 
-        assert!(!timer.is_canceled().unwrap());
+        assert!(!timer.is_canceled());
     }
 }
