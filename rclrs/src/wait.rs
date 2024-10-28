@@ -475,6 +475,8 @@ impl WaitSet {
 
 #[cfg(test)]
 mod tests {
+    use crate::{Clock, Timer};
+
     use super::*;
 
     #[test]
@@ -497,6 +499,30 @@ mod tests {
 
         let readies = wait_set.wait(Some(std::time::Duration::from_millis(10)))?;
         assert!(readies.guard_conditions.contains(&guard_condition));
+
+        Ok(())
+    }
+
+    #[test]
+    fn timer_in_wait_set_readies() -> Result<(), RclrsError> {
+        let context = Context::new([])?;
+        // This is technically a wall clock, but we have a period of 0 so it won't slow down unit testing.
+        let clock = Clock::system();
+
+        let timer: Arc<Mutex<dyn TimerBase>> = Arc::new(Mutex::new(Timer::new(
+            &context,
+            clock,
+            Duration::from_secs(0),
+            |_| {},
+        )?));
+        let mut wait_set = WaitSet::new(0, 0, 1, 0, 0, 0, &context)?;
+
+        assert!(wait_set.timers.is_empty());
+        wait_set.add_timer(Arc::clone(&timer))?;
+
+        let readies = wait_set.wait(Some(std::time::Duration::from_millis(10)))?;
+
+        assert_eq!(readies.timers.len(), 1);
 
         Ok(())
     }
