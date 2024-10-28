@@ -55,7 +55,8 @@ pub(crate) trait TimerBase: Send + Sync {
     /// Internal function to get a reference to the `rcl` handle.
     fn handle(&self) -> &TimerHandle;
     /// Tries to call the timer and run the associated callback.
-    fn execute(&self) -> Result<(), RclrsError>;
+    /// Timers are allowed to modify themselves while being executed.
+    fn execute(&mut self) -> Result<(), RclrsError>;
 }
 
 pub struct Timer {
@@ -272,9 +273,13 @@ impl TimerBase for Timer {
         &self.handle
     }
 
-    fn execute(&self) -> Result<(), RclrsError> {
-        // let mut callback = self.callback.clone();
-        // callback(&mut self);
+    fn execute(&mut self) -> Result<(), RclrsError> {
+        // Timer still needs to be called within RCL, even though we handle the callback ourselves.
+        self.call_rcl()?;
+
+        let callback = self.callback.clone();
+        callback(self);
+
         Ok(())
     }
 }
@@ -323,7 +328,7 @@ mod tests {
 
         timer
             .time_until_next_call()
-            .expect("Timer::time_until_next_call should not error");
+            .expect("Calling Timer::time_until_next_call on a non-canceled timer should not error");
     }
 
     #[test]
