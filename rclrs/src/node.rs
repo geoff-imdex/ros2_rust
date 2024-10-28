@@ -341,11 +341,11 @@ impl Node {
         Ok(subscription)
     }
 
-    /// Create a [`Timer`][1].
+    /// Create a [`Timer`][1] that will use the node's clock.
     ///
     /// A Timer may be modified via the `Arc` returned by this function or from
     /// within its callback.
-    /// A weak pointer to the `Timer` is stored within this node.
+    /// A weak reference counter to the `Timer` is stored within this node.
     ///
     /// [1]: crate::Timer
     pub fn create_timer<F>(
