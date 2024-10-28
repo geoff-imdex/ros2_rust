@@ -354,7 +354,7 @@ impl Node {
         callback: F,
     ) -> Result<Arc<Mutex<Timer>>, RclrsError>
     where
-        F: Fn(&mut Timer) + 'static + Send + Sync,
+        F: FnMut(&mut Timer) + 'static + Send + Sync,
     {
         let timer = Arc::new(Mutex::new(Timer::new_with_context_handle(
             Arc::clone(&self.handle.context_handle),
