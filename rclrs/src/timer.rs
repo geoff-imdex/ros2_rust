@@ -25,8 +25,8 @@ impl<T: FnMut(&mut Timer) + Send + Sync> TimerCallback for T {}
 // Therefore, this type can be safely sent to another thread.
 unsafe impl Send for rcl_timer_t {}
 
-/// Manage the lifecycle of an `rcl_timer_t`, including managing its dependencies
-/// on `rcl_clock_t` and `rcl_context_t` by ensuring that these dependencies are
+/// Manage the lifecycle of an `rcl_timer_t` and its dependency on
+/// `rcl_clock_t` and `rcl_context_t` by ensuring that these dependencies are
 /// [dropped after][1] the `rcl_timer_t`.
 ///
 /// [1]: <https://doc.rust-lang.org/reference/destructors.html>
