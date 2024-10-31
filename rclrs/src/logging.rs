@@ -120,6 +120,12 @@ pub struct LogConditions {
     pub log_if_true: bool,
 }
 
+impl Default for LogConditions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LogConditions {
     /// Default construct an instance
     pub fn new() -> Self {
