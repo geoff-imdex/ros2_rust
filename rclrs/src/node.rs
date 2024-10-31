@@ -17,7 +17,7 @@ use crate::{
     rcl_bindings::*, Client, ClientBase, Clock, Context, ContextHandle, GuardCondition,
     ParameterBuilder, ParameterInterface, ParameterVariant, Parameters, Publisher, QoSProfile,
     RclrsError, Service, ServiceBase, Subscription, SubscriptionBase, SubscriptionCallback,
-    TimeSource, Timer, TimerBase, ENTITY_LIFECYCLE_MUTEX,
+    TimeSource, Timer, TimerBase, TimerCallback, ENTITY_LIFECYCLE_MUTEX,
 };
 
 // SAFETY: The functions accessing this type, including drop(), shouldn't care about the thread
@@ -354,7 +354,7 @@ impl Node {
         callback: F,
     ) -> Result<Arc<Mutex<Timer>>, RclrsError>
     where
-        F: FnMut(&mut Timer) + 'static + Send + Sync,
+        F: TimerCallback + 'static,
     {
         let timer = Arc::new(Mutex::new(Timer::new_with_context_handle(
             Arc::clone(&self.handle.context_handle),
