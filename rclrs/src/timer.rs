@@ -10,7 +10,6 @@ use crate::{
     Context, ContextHandle, RclReturnCode, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
 };
 use std::{
-    i64,
     sync::{atomic::AtomicBool, Arc, Mutex, MutexGuard},
     time::Duration,
 };
@@ -173,12 +172,12 @@ impl Timer {
     /// Returns true if the timer is due or past due to be called.
     /// Returns false if the timer is not yet due or has been canceled.
     pub fn is_ready(&self) -> bool {
-        let mut timer = self.handle.lock();
+        let timer = self.handle.lock();
         let mut is_ready = false;
         // SAFETY:
         // * The timer is initialized, which is guaranteed by the constructor.
         // * The is_ready pointer is allocated on the stack and is valid for the duration of this function.
-        let ret = unsafe { rcl_timer_is_ready(&mut *timer, &mut is_ready) };
+        let ret = unsafe { rcl_timer_is_ready(&*timer, &mut is_ready) };
 
         // rcl_timer_is_ready should only error if incorrect arguments are given or something isn't initialised,
         // both of which we control in this function.
@@ -190,13 +189,13 @@ impl Timer {
     /// Get the time until the next call of the timer is due. Saturates to 0 if the timer is ready.
     /// Returns [`RclReturnCode::TimerCanceled`] as an error if the timer has already been canceled.
     pub fn time_until_next_call(&self) -> Result<Duration, RclrsError> {
-        let mut timer = self.handle.lock();
+        let timer = self.handle.lock();
         let mut remaining_time = 0;
         // SAFETY:
         // * The timer is initialized, which is guaranteed by the constructor.
         // * The remaining_time pointer is allocated on the stack and is valid for the duration of this function.
         unsafe {
-            rcl_timer_get_time_until_next_call(&mut *timer, &mut remaining_time).ok()?;
+            rcl_timer_get_time_until_next_call(&*timer, &mut remaining_time).ok()?;
         }
         Ok(Duration::from_nanos(
             u64::try_from(remaining_time).unwrap_or(0),
@@ -208,12 +207,12 @@ impl Timer {
     /// previous call but instead the time since the current callback was called.
     /// Saturates to 0 if the timer was last called in the future (i.e. the clock jumped).
     pub fn time_since_last_call(&self) -> Duration {
-        let mut timer = self.handle.lock();
+        let timer = self.handle.lock();
         let mut elapsed_time = 0;
         // SAFETY:
         // * The timer is initialized, which is guaranteed by the constructor.
         // * The elapsed_time pointer is allocated on the stack and is valid for the duration of this function.
-        let ret = unsafe { rcl_timer_get_time_since_last_call(&mut *timer, &mut elapsed_time) };
+        let ret = unsafe { rcl_timer_get_time_since_last_call(&*timer, &mut elapsed_time) };
 
         // rcl_timer_get_time_since_last_call should only error if incorrect arguments are given
         // or something isn't initialised, both of which we control in this function.
@@ -388,7 +387,7 @@ mod tests {
         let new_period = Duration::from_millis(100);
 
         // Calling set_period will trigger the debug_assert check on the rcl return value.
-        timer.set_period(new_period.clone());
+        timer.set_period(new_period);
 
         // Calling get_period will trigger the debug_assert check on the rcl return value.
         let retrieved_period = timer.get_period();
