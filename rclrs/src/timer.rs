@@ -15,6 +15,12 @@ use std::{
     time::Duration,
 };
 
+/// A trait for the callback function of a timer.
+pub trait TimerCallback: FnMut(&mut Timer) + Send + Sync {}
+
+// Blanket implementation of TimerCallback for all types that implement the necessary traits.
+impl<T: FnMut(&mut Timer) + Send + Sync> TimerCallback for T {}
+
 // SAFETY: The functions accessing this type, including drop(), shouldn't care
 // about the thread they are running in (partly because they're protected by mutex).
 // Therefore, this type can be safely sent to another thread.
@@ -76,7 +82,7 @@ pub trait TimerBase: Send + Sync {
 /// [5]: crate::Timer::execute
 /// [6]: crate::WaitSet
 pub struct Timer {
-    callback: Arc<Mutex<dyn FnMut(&mut Timer) + Send + Sync>>,
+    callback: Arc<Mutex<dyn TimerCallback>>,
     handle: TimerHandle,
 }
 
@@ -96,7 +102,7 @@ impl Timer {
         callback: F,
     ) -> Result<Self, RclrsError>
     where
-        F: FnMut(&mut Timer) + 'static + Send + Sync,
+        F: TimerCallback + 'static,
     {
         Timer::new_with_context_handle(Arc::clone(&context.handle), clock, period, callback)
     }
@@ -109,7 +115,7 @@ impl Timer {
         callback: F,
     ) -> Result<Self, RclrsError>
     where
-        F: FnMut(&mut Timer) + 'static + Send + Sync,
+        F: TimerCallback + 'static,
     {
         let callback = Arc::new(Mutex::new(callback));
 
