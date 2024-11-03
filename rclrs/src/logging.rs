@@ -256,7 +256,7 @@ macro_rules! log_unconditional {
 pub unsafe fn impl_log(severity: LogSeverity, logger_name: &LoggerName, message: &CString, function: &CString, file: &CString, line: u32) {
     // We use a closure here because there are several different points in this
     // function where we may need to run this same logic.
-    let send_log = |severity: LogSeverity, logger_name: &CString, message: &CString, function: &CString, file: &CString, line: u32| {
+    let send_log = |severity: LogSeverity, logger_name: &CString, message: &CString| {
         let location = rcutils_log_location_t {
             function_name: function.as_ptr(),
             file_name: file.as_ptr(),
@@ -284,7 +284,7 @@ pub unsafe fn impl_log(severity: LogSeverity, logger_name: &LoggerName, message:
     match logger_name {
         LoggerName::Validated(c_name) => {
             // The logger name is pre-validated, so just go ahead and use it.
-            send_log(severity, c_name, message, function, file, line);
+            send_log(severity, c_name, message);
         }
         LoggerName::Unvalidated(str_name) => {
             // The name was not validated before being passed in.
@@ -306,7 +306,7 @@ pub unsafe fn impl_log(severity: LogSeverity, logger_name: &LoggerName, message:
                 if let Some(c_name) = name_map_guard.get(*str_name) {
                     // The map name has been used before, so we just use the
                     // pre-existing CString
-                    send_log(severity, c_name, message, function, file, line);
+                    send_log(severity, c_name, message);
 
                     // We return right away because the remainder of this
                     // function just allocates and validates a new CString for
@@ -329,11 +329,12 @@ pub unsafe fn impl_log(severity: LogSeverity, logger_name: &LoggerName, message:
                     let internal_logger_name: LazyLock<CString> = LazyLock::new(|| {
                         CString::new("logger").unwrap()
                     });
-                    send_log(severity, &internal_logger_name, &invalid_msg, function, file, line);
+                    send_log(severity, &internal_logger_name, &invalid_msg);
                     return;
                 }
             };
 
+            send_log(severity, &c_name, message);
             name_map.lock().unwrap().insert(str_name.to_string(), c_name);
         }
     }
@@ -404,6 +405,8 @@ mod tests {
         log_debug!(node.logger(), "This debug message appears");
         node.logger().set_level(LogSeverity::Info).unwrap();
         log_debug!(node.logger(), "This debug message does not");
+
+        log!(&"custom logger name", "message for custom logger");
 
         Ok(())
     }
