@@ -1,11 +1,12 @@
 use std::{
-    ffi::CString,
+    ffi::{CString, CStr},
     sync::{Arc, Mutex},
 };
 
 use crate::{
     rcl_bindings::*, ClockType, Context, ContextHandle, Node, NodeHandle, ParameterInterface,
     QoSProfile, RclrsError, TimeSource, ToResult, ENTITY_LIFECYCLE_MUTEX, QOS_PROFILE_CLOCK,
+    Logger,
 };
 
 /// A builder for creating a [`Node`][1].
@@ -308,6 +309,19 @@ impl NodeBuilder {
                 &rcl_context.global_arguments,
             )?
         };
+
+        let logger_name = {
+            let rcl_node = handle.rcl_node.lock().unwrap();
+            let logger_name_raw_ptr = unsafe { rcl_node_get_logger_name(&**rcl_node) };
+            if logger_name_raw_ptr.is_null() {
+                ""
+            } else {
+                unsafe { CStr::from_ptr(logger_name_raw_ptr) }
+                .to_str()
+                .unwrap_or("")
+            }
+        };
+
         let node = Arc::new(Node {
             handle,
             clients_mtx: Mutex::new(vec![]),
@@ -318,7 +332,9 @@ impl NodeBuilder {
                 .clock_qos(self.clock_qos)
                 .build(),
             parameter,
+            logger: Logger::new(logger_name)?,
         });
+
         node.time_source.attach_node(&node);
         if self.start_parameter_services {
             node.parameter.create_services(&node)?;
