@@ -3,12 +3,13 @@
 // Adapted from https://github.com/sequenceplanner/r2r/blob/89cec03d07a1496a225751159cbc7bfb529d9dd1/r2r/src/utils.rs
 // Further adapted from https://github.com/mvukov/rules_ros2/pull/371
 
-use std::{ffi::CString, sync::{LazyLock, Mutex}, collections::HashMap};
-
-use crate::{
-    rcl_bindings::*,
-    ENTITY_LIFECYCLE_MUTEX,
+use std::{
+    collections::HashMap,
+    ffi::CString,
+    sync::{LazyLock, Mutex},
 };
+
+use crate::{rcl_bindings::*, ENTITY_LIFECYCLE_MUTEX};
 
 mod logging_configuration;
 pub(crate) use logging_configuration::*;
@@ -256,7 +257,14 @@ macro_rules! log_unconditional {
 /// one of the of log! macros instead. We can't make it private because it needs to be used
 /// by exported macros.
 #[doc(hidden)]
-pub unsafe fn impl_log(severity: LogSeverity, logger_name: &LoggerName, message: &CString, function: &CString, file: &CString, line: u32) {
+pub unsafe fn impl_log(
+    severity: LogSeverity,
+    logger_name: &LoggerName,
+    message: &CString,
+    function: &CString,
+    file: &CString,
+    line: u32,
+) {
     // We use a closure here because there are several different points in this
     // function where we may need to run this same logic.
     let send_log = |severity: LogSeverity, logger_name: &CString, message: &CString| {
@@ -265,9 +273,7 @@ pub unsafe fn impl_log(severity: LogSeverity, logger_name: &LoggerName, message:
             file_name: file.as_ptr(),
             line_number: line as usize,
         };
-        let format: LazyLock<CString> = LazyLock::new(|| {
-            CString::new("%s").unwrap()
-        });
+        let format: LazyLock<CString> = LazyLock::new(|| CString::new("%s").unwrap());
 
         let severity = severity.to_native();
 
@@ -326,19 +332,22 @@ pub unsafe fn impl_log(severity: LogSeverity, logger_name: &LoggerName, message:
                     let invalid_msg: LazyLock<CString> = LazyLock::new(|| {
                         CString::new(
                             "Failed to convert logger name into a c-string. \
-                            Check for null terminators inside the string."
-                        ).unwrap()
+                            Check for null terminators inside the string.",
+                        )
+                        .unwrap()
                     });
-                    let internal_logger_name: LazyLock<CString> = LazyLock::new(|| {
-                        CString::new("logger").unwrap()
-                    });
+                    let internal_logger_name: LazyLock<CString> =
+                        LazyLock::new(|| CString::new("logger").unwrap());
                     send_log(severity, &internal_logger_name, &invalid_msg);
                     return;
                 }
             };
 
             send_log(severity, &c_name, message);
-            name_map.lock().unwrap().insert(str_name.to_string(), c_name);
+            name_map
+                .lock()
+                .unwrap()
+                .insert(str_name.to_string(), c_name);
         }
     }
 }
@@ -357,12 +366,12 @@ macro_rules! function {
         }
         let name = type_name_of(f);
         name.strip_suffix("::f").unwrap()
-    }}
+    }};
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{*, test_helpers::*};
+    use crate::{test_helpers::*, *};
 
     #[test]
     fn test_logging_macros() -> Result<(), RclrsError> {
@@ -388,20 +397,11 @@ mod tests {
         log_error!(node.logger(), "log_error macro");
         log_fatal!(node.logger(), "log_fatal macro");
 
-        log!(
-            node.only_if(false),
-            "This should not be logged",
-        );
-        log!(
-            node.only_if(true),
-            "This should be logged",
-        );
+        log!(node.only_if(false), "This should not be logged",);
+        log!(node.only_if(true), "This should be logged",);
 
         for i in 0..3 {
-            log!(
-                node.warn().skip_first(),
-                "Formatted warning #{}", i
-            );
+            log!(node.warn().skip_first(), "Formatted warning #{}", i);
         }
 
         node.logger().set_level(LogSeverity::Debug).unwrap();

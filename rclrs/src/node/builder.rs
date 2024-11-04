@@ -1,12 +1,12 @@
 use std::{
-    ffi::{CString, CStr},
+    ffi::{CStr, CString},
     sync::{atomic::AtomicBool, Arc, Mutex},
 };
 
 use crate::{
-    rcl_bindings::*, ClockType, Context, ContextHandle, Node, NodeHandle, ParameterInterface,
-    QoSProfile, RclrsError, TimeSource, ToResult, ENTITY_LIFECYCLE_MUTEX, QOS_PROFILE_CLOCK,
-    Logger,
+    rcl_bindings::*, ClockType, Context, ContextHandle, Logger, Node, NodeHandle,
+    ParameterInterface, QoSProfile, RclrsError, TimeSource, ToResult, ENTITY_LIFECYCLE_MUTEX,
+    QOS_PROFILE_CLOCK,
 };
 
 /// A builder for creating a [`Node`][1].
@@ -329,8 +329,8 @@ impl NodeBuilder {
                 // the mutex of rcl_node while we view it. This means all the
                 // safety conditions of CStr::from_ptr are met.
                 unsafe { CStr::from_ptr(logger_name_raw_ptr) }
-                .to_str()
-                .unwrap_or("")
+                    .to_str()
+                    .unwrap_or("")
             }
         };
 

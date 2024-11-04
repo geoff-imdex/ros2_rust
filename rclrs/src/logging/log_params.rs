@@ -1,5 +1,5 @@
-use std::{time::Duration, borrow::Borrow, ffi::CString};
 use crate::rcl_bindings::RCUTILS_LOG_SEVERITY;
+use std::{borrow::Borrow, ffi::CString, time::Duration};
 
 /// These parameters determine the behavior of an instance of logging.
 #[derive(Debug, Clone, Copy)]
