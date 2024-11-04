@@ -10,6 +10,9 @@ use crate::{
     ENTITY_LIFECYCLE_MUTEX,
 };
 
+mod logging_configuration;
+pub(crate) use logging_configuration::*;
+
 mod log_params;
 pub use log_params::*;
 

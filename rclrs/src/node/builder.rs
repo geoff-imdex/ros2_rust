@@ -317,7 +317,7 @@ impl NodeBuilder {
 
         let logger_name = {
             let rcl_node = handle.rcl_node.lock().unwrap();
-            let logger_name_raw_ptr = unsafe { rcl_node_get_logger_name(&**rcl_node) };
+            let logger_name_raw_ptr = unsafe { rcl_node_get_logger_name(&*rcl_node) };
             if logger_name_raw_ptr.is_null() {
                 ""
             } else {
