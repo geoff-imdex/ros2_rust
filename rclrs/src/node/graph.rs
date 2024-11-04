@@ -139,7 +139,7 @@ impl Node {
         unsafe {
             let rcl_node = self.handle.rcl_node.lock().unwrap();
             rcl_get_topic_names_and_types(
-                &**rcl_node,
+                &*rcl_node,
                 &mut rcutils_get_default_allocator(),
                 false,
                 &mut rcl_names_and_types,
@@ -169,7 +169,7 @@ impl Node {
         unsafe {
             let rcl_node = self.handle.rcl_node.lock().unwrap();
             rcl_get_node_names(
-                &**rcl_node,
+                &*rcl_node,
                 rcutils_get_default_allocator(),
                 &mut rcl_names,
                 &mut rcl_namespaces,
@@ -217,7 +217,7 @@ impl Node {
         unsafe {
             let rcl_node = self.handle.rcl_node.lock().unwrap();
             rcl_get_node_names_with_enclaves(
-                &**rcl_node,
+                &*rcl_node,
                 rcutils_get_default_allocator(),
                 &mut rcl_names,
                 &mut rcl_namespaces,
@@ -266,7 +266,7 @@ impl Node {
         // SAFETY: The topic_name string was correctly allocated previously
         unsafe {
             let rcl_node = self.handle.rcl_node.lock().unwrap();
-            rcl_count_publishers(&**rcl_node, topic_name.as_ptr(), &mut count).ok()?
+            rcl_count_publishers(&*rcl_node, topic_name.as_ptr(), &mut count).ok()?
         };
         Ok(count)
     }
@@ -282,7 +282,7 @@ impl Node {
         // SAFETY: The topic_name string was correctly allocated previously
         unsafe {
             let rcl_node = self.handle.rcl_node.lock().unwrap();
-            rcl_count_subscribers(&**rcl_node, topic_name.as_ptr(), &mut count).ok()?
+            rcl_count_subscribers(&*rcl_node, topic_name.as_ptr(), &mut count).ok()?
         };
         Ok(count)
     }
@@ -333,7 +333,7 @@ impl Node {
         unsafe {
             let rcl_node = self.handle.rcl_node.lock().unwrap();
             getter(
-                &**rcl_node,
+                &*rcl_node,
                 &mut rcutils_get_default_allocator(),
                 node_name.as_ptr(),
                 node_namespace.as_ptr(),
@@ -369,7 +369,7 @@ impl Node {
         unsafe {
             let rcl_node = self.handle.rcl_node.lock().unwrap();
             getter(
-                &**rcl_node,
+                &*rcl_node,
                 &mut rcutils_get_default_allocator(),
                 topic.as_ptr(),
                 false,
@@ -487,12 +487,16 @@ mod tests {
                 .unwrap();
         let node_name = "test_publisher_names_and_types";
         let node = Node::new(&context, node_name).unwrap();
-        // Test that the graph has no publishers
+        // Test that the graph has no publishers besides /rosout
         let names_and_topics = node
             .get_publisher_names_and_types_by_node(node_name, "")
             .unwrap();
 
-        assert_eq!(names_and_topics.len(), 0);
+        assert_eq!(names_and_topics.len(), 1);
+        assert_eq!(
+            names_and_topics.get("/rosout").unwrap().first().unwrap(),
+            "rcl_interfaces/msg/Log"
+        );
 
         let num_publishers = node.count_publishers("/test").unwrap();
 
@@ -535,10 +539,14 @@ mod tests {
 
         assert_eq!(names_and_topics.len(), 0);
 
-        // Test that the graph has no topics
+        // Test that the graph has no topics besides /rosout
         let names_and_topics = node.get_topic_names_and_types().unwrap();
 
-        assert_eq!(names_and_topics.len(), 0);
+        assert_eq!(names_and_topics.len(), 1);
+        assert_eq!(
+            names_and_topics.get("/rosout").unwrap().first().unwrap(),
+            "rcl_interfaces/msg/Log"
+        );
     }
 
     #[test]
