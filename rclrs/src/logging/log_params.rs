@@ -233,6 +233,12 @@ impl<'a, T: Borrow<str>> AsLogParams<'a> for &'a T {
     }
 }
 
+impl<'a> AsLogParams<'a> for &'a str {
+    fn as_log_params(self) -> LogParams<'a> {
+        LogParams::new(LoggerName::Unvalidated(self))
+    }
+}
+
 impl<'a> AsLogParams<'a> for LogParams<'a> {
     fn as_log_params(self) -> LogParams<'a> {
         self

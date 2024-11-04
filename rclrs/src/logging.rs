@@ -409,7 +409,17 @@ mod tests {
         node.logger().set_level(LogSeverity::Info).unwrap();
         log_debug!(node.logger(), "This debug message does not");
 
-        log!(&"custom logger name", "message for custom logger");
+        log!("custom logger name", "message for custom logger");
+        for _ in 0..3 {
+            log!("custom logger name".once(), "one-time message for custom logger");
+        }
+
+        for _ in 0..3 {
+            log!(
+                "custom logger name".error().skip_first(),
+                "error for custom logger",
+            );
+        }
 
         Ok(())
     }
