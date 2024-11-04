@@ -321,6 +321,13 @@ impl NodeBuilder {
             if logger_name_raw_ptr.is_null() {
                 ""
             } else {
+                // SAFETY: rcl_node_get_logger_name will either return a nullptr
+                // if the provided node was invalid or provide a valid null-terminated
+                // const char* if the provided node was valid. We have already
+                // verified that it is not a nullptr. We are also preventing the
+                // pointed-to value from being modified while we view it by locking
+                // the mutex of rcl_node while we view it. This means all the
+                // safety conditions of CStr::from_ptr are met.
                 unsafe { CStr::from_ptr(logger_name_raw_ptr) }
                 .to_str()
                 .unwrap_or("")
