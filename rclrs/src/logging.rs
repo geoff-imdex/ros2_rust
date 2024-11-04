@@ -234,6 +234,8 @@ macro_rules! log_unconditional {
                     "Unable to format log message into a valid c-string. Error: {}", err
                 )).unwrap();
 
+                // SAFETY: impl_log is actually completely safe to call, we just
+                // mark it as unsafe to discourage downstream users from calling it
                 unsafe {
                     $crate::impl_log(
                         $crate::LogSeverity::Error,
