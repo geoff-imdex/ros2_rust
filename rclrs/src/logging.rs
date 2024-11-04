@@ -425,4 +425,9 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_function_macro() {
+        assert_eq!(function!(), "rclrs::logging::tests::test_function_macro");
+    }
 }
