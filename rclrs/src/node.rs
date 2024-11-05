@@ -363,7 +363,8 @@ impl Node {
             callback,
         )?));
 
-        { self.timers_mtx.lock() }
+        self.timers_mtx
+            .lock()
             .unwrap()
             .push(Arc::downgrade(&timer) as Weak<Mutex<dyn TimerBase>>);
         Ok(timer)
