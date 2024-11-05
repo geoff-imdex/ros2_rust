@@ -6,7 +6,7 @@
 use std::{
     collections::HashMap,
     ffi::CString,
-    sync::{OnceLock, Mutex},
+    sync::{Mutex, OnceLock},
 };
 
 use crate::{rcl_bindings::*, ENTITY_LIFECYCLE_MUTEX};
@@ -345,9 +345,8 @@ pub unsafe fn impl_log(
                         .unwrap()
                     });
                     static INTERNAL_LOGGER_NAME: OnceLock<CString> = OnceLock::new();
-                    let internal_logger_name = INTERNAL_LOGGER_NAME.get_or_init(
-                        || CString::new("logger").unwrap()
-                    );
+                    let internal_logger_name =
+                        INTERNAL_LOGGER_NAME.get_or_init(|| CString::new("logger").unwrap());
                     send_log(severity, &internal_logger_name, &invalid_msg);
                     return;
                 }
@@ -421,7 +420,10 @@ mod tests {
 
         log!("custom logger name", "message for custom logger");
         for _ in 0..3 {
-            log!("custom logger name".once(), "one-time message for custom logger");
+            log!(
+                "custom logger name".once(),
+                "one-time message for custom logger"
+            );
         }
 
         for _ in 0..3 {

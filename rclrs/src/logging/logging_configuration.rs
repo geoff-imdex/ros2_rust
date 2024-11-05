@@ -1,4 +1,4 @@
-use std::sync::{Arc, OnceLock, Mutex, Weak};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use crate::{
     rcl_bindings::{
