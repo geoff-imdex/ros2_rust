@@ -61,6 +61,10 @@ impl SingleThreadedExecutor {
             for ready_service in ready_entities.services {
                 ready_service.execute()?;
             }
+
+            for ready_timer in ready_entities.timers {
+                ready_timer.lock().unwrap().execute()?;
+            }
         }
 
         Ok(())
@@ -79,6 +83,31 @@ impl SingleThreadedExecutor {
             }
         }
 
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{spin_once, Context};
+
+    use super::*;
+
+    #[test]
+    fn spin_once_fires_timer() -> Result<(), RclrsError> {
+        let context = Context::new([])?;
+        let node = Node::new(&context, "test_spin_timer")?;
+
+        let callback_triggered = Arc::new(Mutex::new(0));
+        let callback_flag = Arc::clone(&callback_triggered);
+
+        let _timer = node.create_timer(Duration::from_secs(0), move |_| {
+            *callback_flag.lock().unwrap() += 1;
+        })?;
+
+        spin_once(node, Some(Duration::ZERO))?;
+
+        assert_eq!(*callback_triggered.lock().unwrap(), 1);
         Ok(())
     }
 }
