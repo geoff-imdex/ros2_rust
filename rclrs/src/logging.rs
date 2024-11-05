@@ -6,7 +6,7 @@
 use std::{
     collections::HashMap,
     ffi::CString,
-    sync::{LazyLock, Mutex},
+    sync::{OnceLock, Mutex},
 };
 
 use crate::{rcl_bindings::*, ENTITY_LIFECYCLE_MUTEX};
@@ -80,7 +80,7 @@ macro_rules! log {
         // https://github.com/intellij-rust/intellij-rust/issues/9853
         // Note: that issue appears to be specific to jetbrains intellisense however,
         // observed same/similar behaviour with rust-analyzer/rustc
-        use std::sync::{Once, LazyLock, Mutex};
+        use std::sync::{Once, OnceLock, Mutex};
         use std::time::SystemTime;
 
         // We wrap the functional body of the macro inside of a closure which
@@ -128,13 +128,14 @@ macro_rules! log {
             // of that interval.
             let interval = params.get_interval();
             if interval > std::time::Duration::ZERO {
-                static LAST_LOG_TIME: LazyLock<Mutex<SystemTime>> = LazyLock::new(|| {
+                static LAST_LOG_TIME: OnceLock<Mutex<SystemTime>> = OnceLock::new();
+                let last_log_time = LAST_LOG_TIME.get_or_init(|| {
                     Mutex::new(std::time::SystemTime::now())
                 });
 
                 if !first_time {
                     let now = std::time::SystemTime::now();
-                    let mut previous = LAST_LOG_TIME.lock().unwrap();
+                    let mut previous = last_log_time.lock().unwrap();
                     if now >= *previous + interval {
                         *previous = now;
                     } else {
@@ -203,17 +204,19 @@ macro_rules! log_fatal {
 #[macro_export]
 macro_rules! log_unconditional {
     ($severity: expr, $logger_name: expr, $($args:tt)*) => {{
-        use std::{ffi::CString, sync::LazyLock};
+        use std::{ffi::CString, sync::OnceLock};
 
         // Only allocate a CString for the function name once per call to this macro.
-        let function: LazyLock<CString> = LazyLock::new(|| {
+        static FUNCTION_NAME: OnceLock<CString> = OnceLock::new();
+        let function_name = FUNCTION_NAME.get_or_init(|| {
             CString::new($crate::function!()).unwrap_or(
                 CString::new("<invalid name>").unwrap()
             )
         });
 
         // Only allocate a CString for the file name once per call to this macro.
-        let file: LazyLock<CString> = LazyLock::new(|| {
+        static FILE_NAME: OnceLock<CString> = OnceLock::new();
+        let file_name = FILE_NAME.get_or_init(|| {
             CString::new(file!()).unwrap_or(
                 CString::new("<invalid name>").unwrap()
             )
@@ -227,7 +230,7 @@ macro_rules! log_unconditional {
             Ok(message) => {
                 // SAFETY: impl_log is actually completely safe to call, we just
                 // mark it as unsafe to discourage downstream users from calling it
-                unsafe { $crate::impl_log($severity, $logger_name, &message, &function, &file, line!()) };
+                unsafe { $crate::impl_log($severity, $logger_name, &message, &function_name, &file_name, line!()) };
             }
             Err(err) => {
                 let message = CString::new(format!(
@@ -241,8 +244,8 @@ macro_rules! log_unconditional {
                         $crate::LogSeverity::Error,
                         &$crate::LoggerName::Unvalidated("logger"),
                         &message,
-                        &function,
-                        &file,
+                        &function_name,
+                        &file_name,
                         line!(),
                     );
                 }
@@ -275,7 +278,8 @@ pub unsafe fn impl_log(
             file_name: file.as_ptr(),
             line_number: line as usize,
         };
-        let format: LazyLock<CString> = LazyLock::new(|| CString::new("%s").unwrap());
+        static FORMAT_CSTR: OnceLock<CString> = OnceLock::new();
+        let format_cstr = FORMAT_CSTR.get_or_init(|| CString::new("%s").unwrap());
 
         let severity = severity.to_native();
 
@@ -286,7 +290,7 @@ pub unsafe fn impl_log(
                 &location,
                 severity as i32,
                 logger_name.as_ptr(),
-                format.as_ptr(),
+                format_cstr.as_ptr(),
                 message.as_ptr(),
             );
         }
@@ -304,7 +308,8 @@ pub unsafe fn impl_log(
             // we don't need to reallocate the CString on every log instance.
             // This is done inside of the function impl_log instead of in a macro
             // so that this map is global for the entire application.
-            let name_map: LazyLock<Mutex<HashMap<String, CString>>> = LazyLock::default();
+            static NAME_MAP: OnceLock<Mutex<HashMap<String, CString>>> = OnceLock::new();
+            let name_map = NAME_MAP.get_or_init(|| Default::default());
 
             {
                 // We need to keep name_map locked while we call send_log, but
@@ -331,15 +336,18 @@ pub unsafe fn impl_log(
             let c_name = match CString::new(str_name.to_string()) {
                 Ok(c_name) => c_name,
                 Err(_) => {
-                    let invalid_msg: LazyLock<CString> = LazyLock::new(|| {
+                    static INVALID_MSG: OnceLock<CString> = OnceLock::new();
+                    let invalid_msg = INVALID_MSG.get_or_init(|| {
                         CString::new(
                             "Failed to convert logger name into a c-string. \
                             Check for null terminators inside the string.",
                         )
                         .unwrap()
                     });
-                    let internal_logger_name: LazyLock<CString> =
-                        LazyLock::new(|| CString::new("logger").unwrap());
+                    static INTERNAL_LOGGER_NAME: OnceLock<CString> = OnceLock::new();
+                    let internal_logger_name = INTERNAL_LOGGER_NAME.get_or_init(
+                        || CString::new("logger").unwrap()
+                    );
                     send_log(severity, &internal_logger_name, &invalid_msg);
                     return;
                 }
