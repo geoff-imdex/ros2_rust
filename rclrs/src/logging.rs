@@ -58,11 +58,11 @@ pub use logger::*;
 ///
 /// All of the above examples will also work with the severity-specific log macros,
 /// but any severity that gets passed in will be overridden:
-/// - [`log_debug`]
-/// - [`log_info`]
-/// - [`log_warn`]
-/// - [`log_error`]
-/// - [`log_fatal`]
+/// - [`log_debug`][crate::log_debug]
+/// - [`log_info`][crate::log_info]
+/// - [`log_warn`][crate::log_warn]
+/// - [`log_error`][crate::log_error]
+/// - [`log_fatal`][crate::log_fatal]
 ///
 /// # Panics
 ///
