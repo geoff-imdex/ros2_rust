@@ -187,7 +187,6 @@ pub(crate) mod log_handler {
             // SAFETY:
             // - We have locked the global mutex
             rcutils_logging_set_output_handler(Some(rclrs_logging_output_handler));
-            let rcl_handler = rcutils_logging_get_output_handler();
         }
 
         Ok(())
