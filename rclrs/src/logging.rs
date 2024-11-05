@@ -278,8 +278,6 @@ pub unsafe fn impl_log(
             file_name: file.as_ptr(),
             line_number: line as usize,
         };
-        static FORMAT_CSTR: OnceLock<CString> = OnceLock::new();
-        let format_cstr = FORMAT_CSTR.get_or_init(|| CString::new("%s").unwrap());
 
         let severity = severity.as_native();
 
@@ -290,7 +288,6 @@ pub unsafe fn impl_log(
                 &location,
                 severity as i32,
                 logger_name.as_ptr(),
-                format_cstr.as_ptr(),
                 message.as_ptr(),
             );
         }
@@ -380,14 +377,33 @@ macro_rules! function {
 
 #[cfg(test)]
 mod tests {
-    use crate::{test_helpers::*, *};
+    use std::sync::Mutex;
+    use crate::{test_helpers::*, *, log_handler::*};
 
     #[test]
     fn test_logging_macros() -> Result<(), RclrsError> {
         let graph = construct_test_graph("test_logging_macros")?;
+
+        let log_collection: Arc<Mutex<Vec<LogEntry<'static>>>> = Arc::new(Mutex::new(Vec::new()));
+        let inner_log_collection = log_collection.clone();
+
+        log_handler::set_logging_output_handler(
+            move |log_entry: log_handler::LogEntry| {
+                inner_log_collection.lock().unwrap().push(log_entry.into_owned());
+            }
+        ).unwrap();
+
+        let last_logger_name_is = |logger_name: &str| {
+            assert_eq!(
+                &log_collection.lock().unwrap().last().unwrap().logger_name,
+                logger_name
+            );
+        };
+
         let node = graph.node1;
 
         log!(&*node, "Logging with node dereference");
+        last_logger_name_is(node.logger().name());
 
         for _ in 0..10 {
             log!(node.once(), "Logging once");
@@ -432,6 +448,8 @@ mod tests {
                 "error for custom logger",
             );
         }
+
+        reset_logging_output_handler();
 
         Ok(())
     }

@@ -162,6 +162,11 @@ pub enum LoggerName<'a> {
 }
 
 /// Logging severity.
+//
+// TODO(@mxgrey): Consider whether this is redundant with RCUTILS_LOG_SEVERITY.
+// Perhaps we can customize the output of bindgen to automatically change the name
+// of RCUTILS_LOG_SEVERITY to just LogSeverity so it's more idiomatic and then
+// export it from the rclrs module.
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
 pub enum LogSeverity {
@@ -197,6 +202,19 @@ impl LogSeverity {
             LogSeverity::Warn => RCUTILS_LOG_SEVERITY_WARN,
             LogSeverity::Error => RCUTILS_LOG_SEVERITY_ERROR,
             LogSeverity::Fatal => RCUTILS_LOG_SEVERITY_FATAL,
+        }
+    }
+
+    pub(crate) fn from_native(native: i32) -> Self {
+        use crate::rcl_bindings::rcl_log_severity_t::*;
+        match native {
+            _ if native == RCUTILS_LOG_SEVERITY_UNSET as i32 => LogSeverity::Unset,
+            _ if native == RCUTILS_LOG_SEVERITY_DEBUG as i32 => LogSeverity::Debug,
+            _ if native == RCUTILS_LOG_SEVERITY_INFO as i32 => LogSeverity::Info,
+            _ if native == RCUTILS_LOG_SEVERITY_WARN as i32 => LogSeverity::Warn,
+            _ if native == RCUTILS_LOG_SEVERITY_ERROR as i32 => LogSeverity::Error,
+            _ if native == RCUTILS_LOG_SEVERITY_FATAL as i32 => LogSeverity::Fatal,
+            _ => panic!("Invalid native severity received: {}", native),
         }
     }
 }
