@@ -168,7 +168,7 @@ pub enum LoggerName<'a> {
 // of RCUTILS_LOG_SEVERITY to just LogSeverity so it's more idiomatic and then
 // export it from the rclrs module.
 #[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LogSeverity {
     /// Use the severity level of the parent logger (or the root logger if the
     /// current logger has no parent)

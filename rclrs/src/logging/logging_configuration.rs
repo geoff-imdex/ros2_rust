@@ -1,9 +1,6 @@
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
-use crate::{
-    rcl_bindings::*,
-    RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
-};
+use crate::{rcl_bindings::*, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX};
 
 struct LoggingConfiguration {
     lifecycle: Mutex<Weak<LoggingLifecycle>>,
@@ -60,15 +57,9 @@ pub(crate) mod log_handler {
     //! in rclrs. We can consider making it public in the future, but we should
     //! put more consideration into the API before doing so.
 
-    use std::{
-        sync::OnceLock,
-        ffi::CStr,
-        borrow::Cow,
-    };
+    use std::{borrow::Cow, ffi::CStr, sync::OnceLock};
 
-    use crate::{
-        rcl_bindings::*, LogSeverity, ENTITY_LIFECYCLE_MUTEX,
-    };
+    use crate::{rcl_bindings::*, LogSeverity, ENTITY_LIFECYCLE_MUTEX};
 
     /// Global variable that allows a custom log handler to be set. This log
     /// handler will be applied throughout the entire application and cannot be
@@ -78,14 +69,19 @@ pub(crate) mod log_handler {
     static LOGGING_OUTPUT_HANDLER: OnceLock<RawLogHandler> = OnceLock::new();
 
     /// Alias for an arbitrary log handler that is compatible with raw rcl types
-    pub(crate) type RawLogHandler = Box<dyn Fn(
-        *const rcutils_log_location_t, // location
-        std::os::raw::c_int, // severity
-        *const std::os::raw::c_char, // logger name
-        rcutils_time_point_value_t, // timestamp
-        *const std::os::raw::c_char, // format
-        *mut va_list, // formatting arguments
-    ) + 'static + Send + Sync>;
+    pub(crate) type RawLogHandler = Box<
+        dyn Fn(
+                *const rcutils_log_location_t, // location
+                std::os::raw::c_int,           // severity
+                *const std::os::raw::c_char,   // logger name
+                rcutils_time_point_value_t,    // timestamp
+                *const std::os::raw::c_char,   // format
+                *mut va_list,                  // formatting arguments
+            )
+            + 'static
+            + Send
+            + Sync,
+    >;
 
     /// This is an idiomatic representation of all the information for a log entry
     pub(crate) struct LogEntry<'a> {
@@ -135,34 +131,45 @@ pub(crate) mod log_handler {
         handler: impl Fn(LogEntry) + 'static + Send + Sync,
     ) -> Result<(), OutputHandlerAlreadySet> {
         let raw_handler = Box::new(
-            move |
-                raw_location: *const rcutils_log_location_t,
-                raw_severity: std::os::raw::c_int,
-                raw_logger_name: *const std::os::raw::c_char,
-                raw_timestamp: rcutils_time_point_value_t,
-                raw_format: *const std::os::raw::c_char,
-                // NOTE: In rclrs we are choosing to always format the full
-                // message in advance, so the format field always contains
-                // the finished formatted message. Therefore we can just ignore
-                // the raw formatting arguments.
-                _raw_formatting_arguments: *mut va_list,
-            | {
+            move |raw_location: *const rcutils_log_location_t,
+                  raw_severity: std::os::raw::c_int,
+                  raw_logger_name: *const std::os::raw::c_char,
+                  raw_timestamp: rcutils_time_point_value_t,
+                  raw_format: *const std::os::raw::c_char,
+                  // NOTE: In rclrs we are choosing to always format the full
+                  // message in advance, so the format field always contains
+                  // the finished formatted message. Therefore we can just ignore
+                  // the raw formatting arguments.
+                  _raw_formatting_arguments: *mut va_list| {
                 unsafe {
                     // NOTE: We use .unwrap() extensively inside this function because
                     // it only gets used during tests. We should reconsider this if
                     // we ever make this public.
                     let location = LogLocation {
-                        function_name: Cow::Borrowed(CStr::from_ptr((*raw_location).function_name).to_str().unwrap()),
-                        file_name: Cow::Borrowed(CStr::from_ptr((*raw_location).file_name).to_str().unwrap()),
+                        function_name: Cow::Borrowed(
+                            CStr::from_ptr((*raw_location).function_name)
+                                .to_str()
+                                .unwrap(),
+                        ),
+                        file_name: Cow::Borrowed(
+                            CStr::from_ptr((*raw_location).file_name).to_str().unwrap(),
+                        ),
                         line_number: (*raw_location).line_number,
                     };
                     let severity = LogSeverity::from_native(raw_severity);
-                    let logger_name = Cow::Borrowed(CStr::from_ptr(raw_logger_name).to_str().unwrap());
+                    let logger_name =
+                        Cow::Borrowed(CStr::from_ptr(raw_logger_name).to_str().unwrap());
                     let timestamp: i64 = raw_timestamp;
                     let message = Cow::Borrowed(CStr::from_ptr(raw_format).to_str().unwrap());
-                    handler(LogEntry { location, severity, logger_name, timestamp, message });
+                    handler(LogEntry {
+                        location,
+                        severity,
+                        logger_name,
+                        timestamp,
+                        message,
+                    });
                 }
-            }
+            },
         );
 
         set_raw_logging_output_handler(raw_handler)
@@ -172,7 +179,9 @@ pub(crate) mod log_handler {
     pub(crate) fn set_raw_logging_output_handler(
         handler: RawLogHandler,
     ) -> Result<(), OutputHandlerAlreadySet> {
-        LOGGING_OUTPUT_HANDLER.set(handler).map_err(|_| OutputHandlerAlreadySet)?;
+        LOGGING_OUTPUT_HANDLER
+            .set(handler)
+            .map_err(|_| OutputHandlerAlreadySet)?;
         let _lifecycle = ENTITY_LIFECYCLE_MUTEX.lock().unwrap();
         unsafe {
             // SAFETY:
@@ -186,7 +195,7 @@ pub(crate) mod log_handler {
 
     /// This function exists so that we can give a raw function pointer to
     /// rcutils_logging_set_output_handler, which is needed by its API.
-    extern fn rclrs_logging_output_handler(
+    extern "C" fn rclrs_logging_output_handler(
         location: *const rcutils_log_location_t,
         severity: std::os::raw::c_int,
         logger_name: *const std::os::raw::c_char,
@@ -195,16 +204,21 @@ pub(crate) mod log_handler {
         logging_output: *mut va_list,
     ) {
         let handler = LOGGING_OUTPUT_HANDLER.get().unwrap();
-        (*handler)(location, severity, logger_name, timestamp, message, logging_output);
+        (*handler)(
+            location,
+            severity,
+            logger_name,
+            timestamp,
+            message,
+            logging_output,
+        );
     }
 
     /// Reset the logging output handler to the default one
     pub(crate) fn reset_logging_output_handler() {
         let _lifecycle = ENTITY_LIFECYCLE_MUTEX.lock().unwrap();
         unsafe {
-            rcutils_logging_set_output_handler(
-                Some(rcl_logging_multiple_output_handler)
-            );
+            rcutils_logging_set_output_handler(Some(rcl_logging_multiple_output_handler));
         }
     }
 }

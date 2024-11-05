@@ -377,8 +377,8 @@ macro_rules! function {
 
 #[cfg(test)]
 mod tests {
+    use crate::{log_handler::*, test_helpers::*, *};
     use std::sync::Mutex;
-    use crate::{test_helpers::*, *, log_handler::*};
 
     #[test]
     fn test_logging_macros() -> Result<(), RclrsError> {
@@ -387,34 +387,83 @@ mod tests {
         let log_collection: Arc<Mutex<Vec<LogEntry<'static>>>> = Arc::new(Mutex::new(Vec::new()));
         let inner_log_collection = log_collection.clone();
 
-        log_handler::set_logging_output_handler(
-            move |log_entry: log_handler::LogEntry| {
-                inner_log_collection.lock().unwrap().push(log_entry.into_owned());
-            }
-        ).unwrap();
+        log_handler::set_logging_output_handler(move |log_entry: log_handler::LogEntry| {
+            inner_log_collection
+                .lock()
+                .unwrap()
+                .push(log_entry.into_owned());
+        })
+        .unwrap();
 
-        let last_logger_name_is = |logger_name: &str| {
-            assert_eq!(
-                &log_collection.lock().unwrap().last().unwrap().logger_name,
-                logger_name
-            );
+        let last_logger_name = || {
+            log_collection
+                .lock()
+                .unwrap()
+                .last()
+                .unwrap()
+                .logger_name
+                .clone()
+        };
+
+        let last_message = || {
+            log_collection
+                .lock()
+                .unwrap()
+                .last()
+                .unwrap()
+                .message
+                .clone()
+        };
+
+        let last_severity = || log_collection.lock().unwrap().last().unwrap().severity;
+
+        let count_message = |message: &str| {
+            let mut count = 0;
+            for log in log_collection.lock().unwrap().iter() {
+                if log.message == message {
+                    count += 1;
+                }
+            }
+            count
         };
 
         let node = graph.node1;
 
         log!(&*node, "Logging with node dereference");
-        last_logger_name_is(node.logger().name());
+        assert_eq!(last_logger_name(), node.logger().name());
+        assert_eq!(last_message(), "Logging with node dereference");
+        assert_eq!(last_severity(), LogSeverity::Info);
 
         for _ in 0..10 {
             log!(node.once(), "Logging once");
         }
+        assert_eq!(count_message("Logging once"), 1);
+        assert_eq!(last_severity(), LogSeverity::Info);
 
         log!(node.logger(), "Logging with node logger");
+        assert_eq!(last_message(), "Logging with node logger");
+        assert_eq!(last_severity(), LogSeverity::Info);
+
         log!(node.debug(), "Debug from node");
+        // The default severity level is Info so we should not see the last message
+        assert_ne!(last_message(), "Debug from node");
+        assert_ne!(last_severity(), LogSeverity::Debug);
+
         log!(node.info(), "Info from node");
+        assert_eq!(last_message(), "Info from node");
+        assert_eq!(last_severity(), LogSeverity::Info);
+
         log!(node.warn(), "Warn from node");
+        assert_eq!(last_message(), "Warn from node");
+        assert_eq!(last_severity(), LogSeverity::Warn);
+
         log!(node.error(), "Error from node");
+        assert_eq!(last_message(), "Error from node");
+        assert_eq!(last_severity(), LogSeverity::Error);
+
         log!(node.fatal(), "Fatal from node");
+        assert_eq!(last_message(), "Fatal from node");
+        assert_eq!(last_severity(), LogSeverity::Fatal);
 
         log_debug!(node.logger(), "log_debug macro");
         log_info!(node.logger(), "log_info macro");
@@ -428,26 +477,42 @@ mod tests {
         for i in 0..3 {
             log!(node.warn().skip_first(), "Formatted warning #{}", i);
         }
+        assert_eq!(count_message("Formatted warning #0"), 0);
+        assert_eq!(count_message("Formatted warning #1"), 1);
+        assert_eq!(count_message("Formatted warning #2"), 1);
 
         node.logger().set_level(LogSeverity::Debug).unwrap();
         log_debug!(node.logger(), "This debug message appears");
+        assert_eq!(last_message(), "This debug message appears");
+        assert_eq!(last_severity(), LogSeverity::Debug);
+
         node.logger().set_level(LogSeverity::Info).unwrap();
-        log_debug!(node.logger(), "This debug message does not");
+        log_debug!(node.logger(), "This debug message does not appear");
+        assert_ne!(last_message(), "This debug message does not appear");
 
         log!("custom logger name", "message for custom logger");
-        for _ in 0..3 {
-            log!(
-                "custom logger name".once(),
-                "one-time message for custom logger"
-            );
-        }
+        assert_eq!(last_logger_name(), "custom logger name");
+        assert_eq!(last_message(), "message for custom logger");
 
         for _ in 0..3 {
             log!(
-                "custom logger name".error().skip_first(),
+                "custom logger name once".once(),
+                "one-time message for custom logger",
+            );
+        }
+        assert_eq!(last_logger_name(), "custom logger name once");
+        assert_eq!(last_severity(), LogSeverity::Info);
+        assert_eq!(count_message("one-time message for custom logger"), 1);
+
+        for _ in 0..3 {
+            log!(
+                "custom logger name skip".error().skip_first(),
                 "error for custom logger",
             );
         }
+        assert_eq!(last_logger_name(), "custom logger name skip");
+        assert_eq!(last_severity(), LogSeverity::Error);
+        assert_eq!(count_message("error for custom logger"), 2);
 
         reset_logging_output_handler();
 
