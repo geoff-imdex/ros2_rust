@@ -400,7 +400,9 @@ impl Node {
     }
 
     pub(crate) fn live_timers(&self) -> Vec<Arc<Mutex<dyn TimerBase>>> {
-        { self.timers_mtx.lock().unwrap() }
+        self.timers_mtx
+            .lock()
+            .unwrap()
             .iter()
             .filter_map(Weak::upgrade)
             .collect()
