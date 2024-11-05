@@ -67,9 +67,9 @@ impl<'a> LogParams<'a> {
 ///
 /// [1]: Borrow
 /// [2]: std::borrow::Cow
-pub trait AsLogParams<'a>: Sized {
+pub trait ToLogParams<'a>: Sized {
     /// Convert the object into LogParams with default settings
-    fn as_log_params(self) -> LogParams<'a>;
+    fn to_log_params(self) -> LogParams<'a>;
 
     /// The logging should only happen once
     fn once(self) -> LogParams<'a> {
@@ -83,7 +83,7 @@ pub trait AsLogParams<'a>: Sized {
 
     /// Set the occurrence behavior of the log instance
     fn occurs(self, occurs: LogOccurrence) -> LogParams<'a> {
-        let mut params = self.as_log_params();
+        let mut params = self.to_log_params();
         params.occurs = occurs;
         params
     }
@@ -94,7 +94,7 @@ pub trait AsLogParams<'a>: Sized {
     ///
     /// A negative duration is not valid, but will be treated as a zero duration.
     fn interval(self, interval: Duration) -> LogParams<'a> {
-        let mut params = self.as_log_params();
+        let mut params = self.to_log_params();
         params.interval = interval;
         params
     }
@@ -103,10 +103,10 @@ pub trait AsLogParams<'a>: Sized {
     /// this function.
     ///
     /// Other factors may prevent the log from being published if a `true` is
-    /// passed in, such as `AsLogParams::interval` or `AsLogParams::once`
+    /// passed in, such as `ToLogParams::interval` or `ToLogParams::once`
     /// filtering the log.
     fn only_if(self, only_if: bool) -> LogParams<'a> {
-        let mut params = self.as_log_params();
+        let mut params = self.to_log_params();
         params.only_if = only_if;
         params
     }
@@ -140,7 +140,7 @@ pub trait AsLogParams<'a>: Sized {
     /// Set the severity for this instance of logging. The default value will be
     /// [`LogSeverity::Info`].
     fn severity(self, severity: LogSeverity) -> LogParams<'a> {
-        let mut params = self.as_log_params();
+        let mut params = self.to_log_params();
         params.severity = severity;
         params
     }
@@ -188,7 +188,7 @@ pub enum LogSeverity {
 }
 
 impl LogSeverity {
-    pub(super) fn to_native(&self) -> RCUTILS_LOG_SEVERITY {
+    pub(super) fn as_native(&self) -> RCUTILS_LOG_SEVERITY {
         use crate::rcl_bindings::rcl_log_severity_t::*;
         match self {
             LogSeverity::Unset => RCUTILS_LOG_SEVERITY_UNSET,
@@ -227,20 +227,20 @@ impl Default for LogOccurrence {
 
 // Anything that we can borrow a string from can be used as if it's a logger and
 // turned into LogParams
-impl<'a, T: Borrow<str>> AsLogParams<'a> for &'a T {
-    fn as_log_params(self) -> LogParams<'a> {
+impl<'a, T: Borrow<str>> ToLogParams<'a> for &'a T {
+    fn to_log_params(self) -> LogParams<'a> {
         LogParams::new(LoggerName::Unvalidated(self.borrow()))
     }
 }
 
-impl<'a> AsLogParams<'a> for &'a str {
-    fn as_log_params(self) -> LogParams<'a> {
+impl<'a> ToLogParams<'a> for &'a str {
+    fn to_log_params(self) -> LogParams<'a> {
         LogParams::new(LoggerName::Unvalidated(self))
     }
 }
 
-impl<'a> AsLogParams<'a> for LogParams<'a> {
-    fn as_log_params(self) -> LogParams<'a> {
+impl<'a> ToLogParams<'a> for LogParams<'a> {
+    fn to_log_params(self) -> LogParams<'a> {
         self
     }
 }

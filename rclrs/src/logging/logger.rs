@@ -2,12 +2,12 @@ use std::{borrow::Borrow, ffi::CString};
 
 use crate::{
     rcl_bindings::{rcutils_logging_set_default_logger_level, rcutils_logging_set_logger_level},
-    AsLogParams, LogParams, LogSeverity, LoggerName, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
+    ToLogParams, LogParams, LogSeverity, LoggerName, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
 };
 
 /// Logger can be passed in as the first argument into one of the [logging][1]
 /// macros provided by rclrs. When passing it into one of the logging macros,
-/// you can optionally apply any of the methods from [`AsLogParams`] to tweak
+/// you can optionally apply any of the methods from [`ToLogParams`] to tweak
 /// the logging behavior.
 ///
 /// You can obtain a Logger in the following ways:
@@ -71,7 +71,7 @@ impl Logger {
         // - not thread-safe, so we lock the global mutex before calling this
         let _lifecycle = ENTITY_LIFECYCLE_MUTEX.lock().unwrap();
         unsafe {
-            rcutils_logging_set_logger_level(self.c_name.as_ptr(), severity.to_native() as i32).ok()
+            rcutils_logging_set_logger_level(self.c_name.as_ptr(), severity.as_native() as i32).ok()
         }
     }
 
@@ -83,13 +83,13 @@ impl Logger {
         // - not thread-safe, so we lock the global mutex before calling this
         let _lifecycle = ENTITY_LIFECYCLE_MUTEX.lock().unwrap();
         unsafe {
-            rcutils_logging_set_default_logger_level(severity.to_native() as i32);
+            rcutils_logging_set_default_logger_level(severity.as_native() as i32);
         }
     }
 }
 
-impl<'a> AsLogParams<'a> for &'a Logger {
-    fn as_log_params(self) -> LogParams<'a> {
+impl<'a> ToLogParams<'a> for &'a Logger {
+    fn to_log_params(self) -> LogParams<'a> {
         LogParams::new(LoggerName::Validated(&self.c_name))
     }
 }

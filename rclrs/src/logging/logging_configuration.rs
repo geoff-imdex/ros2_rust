@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, OnceLock, Mutex, Weak},
+    sync::{Arc, Mutex, OnceLock, Weak},
     time::Instant,
 };
 
