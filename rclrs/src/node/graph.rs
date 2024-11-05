@@ -500,7 +500,7 @@ mod tests {
             }
 
             // rosout does not automatically show up in jazzy when the graph is empty
-            #[cfg(ros_distro = "jazzy")]
+            #[cfg(any(ros_distro = "jazzy", ros_distro = "rolling"))]
             {
                 assert_eq!(topics.len(), 0);
             }
