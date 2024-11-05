@@ -309,7 +309,7 @@ pub unsafe fn impl_log(
             // This is done inside of the function impl_log instead of in a macro
             // so that this map is global for the entire application.
             static NAME_MAP: OnceLock<Mutex<HashMap<String, CString>>> = OnceLock::new();
-            let name_map = NAME_MAP.get_or_init(|| Default::default());
+            let name_map = NAME_MAP.get_or_init(Default::default);
 
             {
                 // We need to keep name_map locked while we call send_log, but
@@ -347,7 +347,7 @@ pub unsafe fn impl_log(
                     static INTERNAL_LOGGER_NAME: OnceLock<CString> = OnceLock::new();
                     let internal_logger_name =
                         INTERNAL_LOGGER_NAME.get_or_init(|| CString::new("logger").unwrap());
-                    send_log(severity, &internal_logger_name, &invalid_msg);
+                    send_log(severity, internal_logger_name, invalid_msg);
                     return;
                 }
             };
