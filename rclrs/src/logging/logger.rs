@@ -2,7 +2,7 @@ use std::{borrow::Borrow, ffi::CString};
 
 use crate::{
     rcl_bindings::{rcutils_logging_set_default_logger_level, rcutils_logging_set_logger_level},
-    ToLogParams, LogParams, LogSeverity, LoggerName, RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
+    LogParams, LogSeverity, LoggerName, RclrsError, ToLogParams, ToResult, ENTITY_LIFECYCLE_MUTEX,
 };
 
 /// Logger can be passed in as the first argument into one of the [logging][1]
