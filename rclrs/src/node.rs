@@ -13,7 +13,7 @@ use rosidl_runtime_rs::Message;
 
 pub use self::{builder::*, graph::*};
 use crate::{
-    rcl_bindings::*, AsLogParams, Client, ClientBase, Clock, Context, ContextHandle,
+    rcl_bindings::*, ToLogParams, Client, ClientBase, Clock, Context, ContextHandle,
     GuardCondition, LogParams, Logger, ParameterBuilder, ParameterInterface, ParameterVariant,
     Parameters, Publisher, QoSProfile, RclrsError, Service, ServiceBase, Subscription,
     SubscriptionBase, SubscriptionCallback, TimeSource, ENTITY_LIFECYCLE_MUTEX,
@@ -472,9 +472,9 @@ impl Node {
     }
 }
 
-impl<'a> AsLogParams<'a> for &'a Node {
-    fn as_log_params(self) -> LogParams<'a> {
-        self.logger().as_log_params()
+impl<'a> ToLogParams<'a> for &'a Node {
+    fn to_log_params(self) -> LogParams<'a> {
+        self.logger().to_log_params()
     }
 }
 

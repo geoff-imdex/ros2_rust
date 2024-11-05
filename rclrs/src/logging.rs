@@ -25,7 +25,7 @@ pub use logger::*;
 /// # Examples
 ///
 /// ```
-/// use rclrs::{log, AsLogParams};
+/// use rclrs::{log, ToLogParams};
 /// use std::sync::Mutex;
 /// use std::time::Duration;
 /// use std::env;
@@ -75,7 +75,7 @@ macro_rules! log {
     // ```
     // log_error!(<logger>, "Log with no params"); // OR
     // log_error!(<logger>, "Log with useful info {}", error_reason);
-    ($as_log_params: expr, $($args:tt)*) => {{
+    ($to_log_params: expr, $($args:tt)*) => {{
         // Adding these use statements here due an issue like this one:
         // https://github.com/intellij-rust/intellij-rust/issues/9853
         // Note: that issue appears to be specific to jetbrains intellisense however,
@@ -88,7 +88,7 @@ macro_rules! log {
         // macro early without causing the calling function to also try to
         // return early.
         (|| {
-            let params = $crate::AsLogParams::as_log_params($as_log_params);
+            let params = $crate::ToLogParams::to_log_params($to_log_params);
 
             if !params.get_user_filter() {
                 // The user filter is telling us not to log this time, so exit
@@ -155,8 +155,8 @@ macro_rules! log {
 /// Debug log message. See [`log`] for usage.
 #[macro_export]
 macro_rules! log_debug {
-    ($as_log_params: expr, $($args:tt)*) => {{
-        let log_params = $crate::AsLogParams::as_log_params($as_log_params);
+    ($to_log_params: expr, $($args:tt)*) => {{
+        let log_params = $crate::ToLogParams::to_log_params($to_log_params);
         $crate::log!(log_params.debug(), $($args)*);
     }}
 }
@@ -164,8 +164,8 @@ macro_rules! log_debug {
 /// Info log message. See [`log`] for usage.
 #[macro_export]
 macro_rules! log_info {
-    ($as_log_params: expr, $($args:tt)*) => {{
-        let log_params = $crate::AsLogParams::as_log_params($as_log_params);
+    ($to_log_params: expr, $($args:tt)*) => {{
+        let log_params = $crate::ToLogParams::to_log_params($to_log_params);
         $crate::log!(log_params.info(), $($args)*);
     }}
 }
@@ -173,8 +173,8 @@ macro_rules! log_info {
 /// Warning log message. See [`log`] for usage.
 #[macro_export]
 macro_rules! log_warn {
-    ($as_log_params: expr, $($args:tt)*) => {{
-        let log_params = $crate::AsLogParams::as_log_params($as_log_params);
+    ($to_log_params: expr, $($args:tt)*) => {{
+        let log_params = $crate::ToLogParams::to_log_params($to_log_params);
         $crate::log!(log_params.warn(), $($args)*);
     }}
 }
@@ -182,8 +182,8 @@ macro_rules! log_warn {
 /// Error log message. See [`log`] for usage.
 #[macro_export]
 macro_rules! log_error {
-    ($as_log_params: expr, $($args:tt)*) => {{
-        let log_params = $crate::AsLogParams::as_log_params($as_log_params);
+    ($to_log_params: expr, $($args:tt)*) => {{
+        let log_params = $crate::ToLogParams::to_log_params($to_log_params);
         $crate::log!(log_params.error(), $($args)*);
     }}
 }
@@ -191,8 +191,8 @@ macro_rules! log_error {
 /// Fatal log message. See [`log`] for usage.
 #[macro_export]
 macro_rules! log_fatal {
-    ($as_log_params: expr, $($args:tt)*) => {{
-        let log_params = $crate::AsLogParams::as_log_params($as_log_params);
+    ($to_log_params: expr, $($args:tt)*) => {{
+        let log_params = $crate::ToLogParams::to_log_params($to_log_params);
         $crate::log!(log_params.fatal(), $($args)*);
     }}
 }
@@ -281,7 +281,7 @@ pub unsafe fn impl_log(
         static FORMAT_CSTR: OnceLock<CString> = OnceLock::new();
         let format_cstr = FORMAT_CSTR.get_or_init(|| CString::new("%s").unwrap());
 
-        let severity = severity.to_native();
+        let severity = severity.as_native();
 
         let _lifecycle = ENTITY_LIFECYCLE_MUTEX.lock().unwrap();
         // SAFETY: Global variables are protected via ENTITY_LIFECYCLE_MUTEX, no other preconditions are required
