@@ -1,18 +1,21 @@
-use std::sync::{Arc, OnceLock, Mutex, Weak};
+use std::{
+    sync::{Arc, OnceLock, Mutex, Weak},
+    time::Instant,
+};
 
 use crate::{
-    rcl_bindings::{
-        rcl_arguments_t, rcl_context_t, rcl_logging_configure, rcl_logging_fini,
-        rcutils_get_default_allocator,
-    },
-    RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX,
+    rcl_bindings::*,
+    RclrsError, ToResult, ENTITY_LIFECYCLE_MUTEX, LogSeverity,
 };
 
 struct LoggingConfiguration {
     lifecycle: Mutex<Weak<LoggingLifecycle>>,
 }
 
-pub(crate) struct LoggingLifecycle;
+pub(crate) struct LoggingLifecycle {
+    // Keep the pointer
+    handler: Option<LoggingOutputHandler>,
+}
 
 impl LoggingLifecycle {
     fn new(args: &rcl_arguments_t) -> Result<Self, RclrsError> {
@@ -54,4 +57,42 @@ impl Drop for LoggingLifecycle {
             rcl_logging_fini();
         }
     }
+}
+
+pub struct LogLocation<'a> {
+    pub function_name: &'a str,
+    pub file_name: &'a str,
+    pub line_number: usize,
+}
+
+pub type RawLogHandler = Box<dyn Fn(
+    *const rcutils_log_location_t, // location
+    std::os::raw::c_int, // severity
+    *const std::os::raw::c_char, // logger name
+    rcutils_time_point_value_t, // timestamp
+    *const std::os::raw::c_char, // message
+    *mut rcutils_char_array_t, // logging_output
+) + 'static + Send + Sync>;
+
+static LOGGING_OUTPUT_HANDLER: OnceLock<RawLogHandler> = OnceLock::new();
+
+pub fn set_raw_logging_output_handler(
+
+) -> Result<(), RawLogHandler> {
+    Ok(())
+}
+
+pub type LogHandler = Box<dyn Fn(
+    LogLocation,
+    LogSeverity,
+    &str, // logger name
+    Instant, // timestamp
+    &str, // message
+
+) + 'static + Send + Sync>;
+
+pub fn set_logging_output_handler(
+
+) -> Result<(),  {
+
 }
