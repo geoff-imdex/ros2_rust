@@ -216,8 +216,7 @@ macro_rules! log_unconditional {
             // change.
             let function_name = $crate::function!()
                 .strip_suffix("::{{closure}}::{{closure}}")
-                .unwrap()
-                ;
+                .unwrap();
 
             CString::new(function_name).unwrap_or(
                 CString::new("<invalid name>").unwrap()
@@ -289,17 +288,65 @@ pub unsafe fn impl_log(
             line_number: line as usize,
         };
 
+        static FORMAT_STRING: OnceLock<CString> = OnceLock::new();
+        let format_string = FORMAT_STRING.get_or_init(|| {
+            CString::new("%s").unwrap()
+        });
+
         let severity = severity.as_native();
 
         let _lifecycle = ENTITY_LIFECYCLE_MUTEX.lock().unwrap();
-        // SAFETY: Global variables are protected via ENTITY_LIFECYCLE_MUTEX, no other preconditions are required
-        unsafe {
-            rcutils_log(
-                &location,
-                severity as i32,
-                logger_name.as_ptr(),
-                message.as_ptr(),
-            );
+
+        #[cfg(test)]
+        {
+            // If we are compiling for testing purposes, when the default log
+            // output handler is being used we need to use the format_string,
+            // but when our custom log output handler is being used we need to
+            // pass the raw message string so that it can be viewed by the
+            // custom log output handler, allowing us to use it for test assertions.
+            let using_custom_handler = unsafe {
+                // SAFETY: The global mutex is locked as _lifecycle
+                log_handler::is_using_custom_handler()
+            };
+            if using_custom_handler {
+                // We are using the custom log handler that is only used during
+                // logging tests, so pass the raw message as the format string.
+                unsafe {
+                    // SAFETY: The global mutex is locked as _lifecycle
+                    rcutils_log(
+                        &location,
+                        severity as i32,
+                        logger_name.as_ptr(),
+                        message.as_ptr(),
+                    );
+                }
+            } else {
+                // We are using the normal log handler so call rcutils_log the normal way.
+                unsafe {
+                    // SAFETY: The global mutex is locked as _lifecycle
+                    rcutils_log(
+                        &location,
+                        severity as i32,
+                        logger_name.as_ptr(),
+                        format_string.as_ptr(),
+                        message.as_ptr(),
+                    );
+                }
+            }
+        }
+
+        #[cfg(not(test))]
+        {
+            unsafe {
+                // SAFETY: The global mutex is locked as _lifecycle
+                rcutils_log(
+                    &location,
+                    severity as i32,
+                    logger_name.as_ptr(),
+                    format_string.as_ptr(),
+                    message.as_ptr(),
+                );
+            }
         }
     };
 
@@ -392,6 +439,20 @@ mod tests {
 
     #[test]
     fn test_logging_macros() -> Result<(), RclrsError> {
+        // This test ensures that strings which are being sent to the logger are
+        // being sanitized correctly. Rust generally and our logging macro in
+        // particular do not use C-style formatting strings, but rcutils expects
+        // to receive C-style formatting strings alongside variadic arguments
+        // that describe how to fill in the formatting.
+        //
+        // If we pass the final string into rcutils as the format with no
+        // variadic arguments, then it may trigger a crash or undefined behavior
+        // if the message happens to contain any % symbols. In particular %n
+        // will trigger a crash when no variadic arguments are given because it
+        // attempts to write to a buffer. If no buffer is given, a seg fault
+        // happens.
+        log!("please do not crash", "%n");
+
         let graph = construct_test_graph("test_logging_macros")?;
 
         let log_collection: Arc<Mutex<Vec<LogEntry<'static>>>> = Arc::new(Mutex::new(Vec::new()));
