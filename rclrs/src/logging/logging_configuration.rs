@@ -84,6 +84,7 @@ pub(crate) mod log_handler {
     >;
 
     /// This is an idiomatic representation of all the information for a log entry
+    #[derive(Clone)]
     pub(crate) struct LogEntry<'a> {
         pub(crate) location: LogLocation<'a>,
         pub(crate) severity: LogSeverity,
@@ -106,7 +107,7 @@ pub(crate) mod log_handler {
     }
 
     /// Rust-idiomatic representation of the location of a log
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub(crate) struct LogLocation<'a> {
         pub function_name: Cow<'a, str>,
         pub file_name: Cow<'a, str>,

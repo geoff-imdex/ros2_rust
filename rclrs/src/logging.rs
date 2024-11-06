@@ -209,7 +209,17 @@ macro_rules! log_unconditional {
         // Only allocate a CString for the function name once per call to this macro.
         static FUNCTION_NAME: OnceLock<CString> = OnceLock::new();
         let function_name = FUNCTION_NAME.get_or_init(|| {
-            CString::new($crate::function!()).unwrap_or(
+            // This call to function! is nested within two layers of closures,
+            // so we need to strip away those suffixes or else users will be
+            // misled. If we ever restructure these macros or if Rust changes
+            // the way it names closures, this implementation detail may need to
+            // change.
+            let function_name = $crate::function!()
+                .strip_suffix("::{{closure}}::{{closure}}")
+                .unwrap()
+                ;
+
+            CString::new(function_name).unwrap_or(
                 CString::new("<invalid name>").unwrap()
             )
         });
@@ -415,6 +425,16 @@ mod tests {
                 .clone()
         };
 
+        let last_location = || {
+            log_collection
+                .lock()
+                .unwrap()
+                .last()
+                .unwrap()
+                .location
+                .clone()
+        };
+
         let last_severity = || log_collection.lock().unwrap().last().unwrap().severity;
 
         let count_message = |message: &str| {
@@ -433,6 +453,10 @@ mod tests {
         assert_eq!(last_logger_name(), node.logger().name());
         assert_eq!(last_message(), "Logging with node dereference");
         assert_eq!(last_severity(), LogSeverity::Info);
+        assert_eq!(
+            last_location().function_name,
+            "rclrs::logging::tests::test_logging_macros",
+        );
 
         for _ in 0..10 {
             log!(node.once(), "Logging once");
