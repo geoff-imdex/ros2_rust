@@ -59,7 +59,14 @@ pub(crate) mod log_handler {
     //! we need to figure out a way to process C-style formatting strings with
     //! a [`va_list`] from inside of Rust, which seems to be very messy.
 
-    use std::{borrow::Cow, ffi::CStr, sync::OnceLock};
+    use std::{
+        borrow::Cow,
+        ffi::CStr,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            OnceLock,
+        },
+    };
 
     use crate::{rcl_bindings::*, LogSeverity, ENTITY_LIFECYCLE_MUTEX};
 
@@ -129,6 +136,8 @@ pub(crate) mod log_handler {
     #[derive(Debug)]
     pub(crate) struct OutputHandlerAlreadySet;
 
+    static USING_CUSTOM_HANDLER: OnceLock<AtomicBool> = OnceLock::new();
+
     /// Set an idiomatic log hander
     pub(crate) fn set_logging_output_handler(
         handler: impl Fn(LogEntry) + 'static + Send + Sync,
@@ -193,17 +202,16 @@ pub(crate) mod log_handler {
             rcutils_logging_set_output_handler(Some(rclrs_logging_output_handler));
         }
 
+        USING_CUSTOM_HANDLER
+            .get_or_init(|| AtomicBool::new(false))
+            .store(true, Ordering::Release);
         Ok(())
     }
 
-    /// SAFETY: The global mutex needs to be locked while calling this
-    pub(crate) unsafe fn is_using_custom_handler() -> bool {
-        let current_handler = unsafe {
-            // SAFETY: The global mutex is by the caller
-            rcutils_logging_get_output_handler()
-        };
-
-        current_handler.is_some_and(|h| h == rclrs_logging_output_handler)
+    pub(crate) fn is_using_custom_handler() -> bool {
+        USING_CUSTOM_HANDLER
+            .get_or_init(|| AtomicBool::new(false))
+            .load(Ordering::Acquire)
     }
 
     /// This function exists so that we can give a raw function pointer to

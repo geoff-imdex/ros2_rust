@@ -302,11 +302,7 @@ pub unsafe fn impl_log(
             // but when our custom log output handler is being used we need to
             // pass the raw message string so that it can be viewed by the
             // custom log output handler, allowing us to use it for test assertions.
-            let using_custom_handler = unsafe {
-                // SAFETY: The global mutex is locked as _lifecycle
-                log_handler::is_using_custom_handler()
-            };
-            if using_custom_handler {
+            if log_handler::is_using_custom_handler() {
                 // We are using the custom log handler that is only used during
                 // logging tests, so pass the raw message as the format string.
                 unsafe {
