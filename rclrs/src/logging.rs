@@ -289,9 +289,7 @@ pub unsafe fn impl_log(
         };
 
         static FORMAT_STRING: OnceLock<CString> = OnceLock::new();
-        let format_string = FORMAT_STRING.get_or_init(|| {
-            CString::new("%s").unwrap()
-        });
+        let format_string = FORMAT_STRING.get_or_init(|| CString::new("%s").unwrap());
 
         let severity = severity.as_native();
 
