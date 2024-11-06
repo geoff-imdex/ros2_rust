@@ -241,5 +241,8 @@ pub(crate) mod log_handler {
         unsafe {
             rcutils_logging_set_output_handler(Some(rcl_logging_multiple_output_handler));
         }
+        USING_CUSTOM_HANDLER
+            .get_or_init(|| AtomicBool::new(false))
+            .store(false, Ordering::Release);
     }
 }
