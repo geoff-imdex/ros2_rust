@@ -53,7 +53,7 @@ impl Drop for LoggingLifecycle {
 #[cfg(test)]
 pub(crate) mod log_handler {
     //! This module provides a way to customize how log output is handled. For
-    //! now we are not making this a public API and are only using it for tests
+    //! now we are not making this a private API and are only using it for tests
     //! in rclrs. We can consider making it public in the future, but we should
     //! put more consideration into the API before doing so, and more crucially
     //! we need to figure out a way to process C-style formatting strings with
@@ -72,9 +72,10 @@ pub(crate) mod log_handler {
 
     /// Global variable that allows a custom log handler to be set. This log
     /// handler will be applied throughout the entire application and cannot be
-    /// undone. If you want to be able to change the log handler over the
-    /// lifetime of your application, you should design your own custom handler
-    /// with an Arc<Mutex<T>> inside that allows its behavior to be modified.
+    /// replaced with a different custom log handler. If you want to be able to
+    /// change the log handler over the lifetime of your application, you should
+    /// design your own custom handler with an Arc<Mutex<T>> inside that allows
+    /// its own behavior to be modified.
     static LOGGING_OUTPUT_HANDLER: OnceLock<RawLogHandler> = OnceLock::new();
 
     /// Alias for an arbitrary log handler that is compatible with raw rcl types
