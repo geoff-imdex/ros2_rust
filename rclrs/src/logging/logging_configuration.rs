@@ -55,9 +55,18 @@ pub(crate) mod log_handler {
     //! This module provides a way to customize how log output is handled. For
     //! now we are not making this a public API and are only using it for tests
     //! in rclrs. We can consider making it public in the future, but we should
-    //! put more consideration into the API before doing so.
+    //! put more consideration into the API before doing so, and more crucially
+    //! we need to figure out a way to process C-style formatting strings with
+    //! a [`va_list`] from inside of Rust, which seems to be very messy.
 
-    use std::{borrow::Cow, ffi::CStr, sync::OnceLock};
+    use std::{
+        borrow::Cow,
+        ffi::CStr,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            OnceLock,
+        },
+    };
 
     use crate::{rcl_bindings::*, LogSeverity, ENTITY_LIFECYCLE_MUTEX};
 
@@ -84,6 +93,7 @@ pub(crate) mod log_handler {
     >;
 
     /// This is an idiomatic representation of all the information for a log entry
+    #[derive(Clone)]
     pub(crate) struct LogEntry<'a> {
         pub(crate) location: LogLocation<'a>,
         pub(crate) severity: LogSeverity,
@@ -106,7 +116,7 @@ pub(crate) mod log_handler {
     }
 
     /// Rust-idiomatic representation of the location of a log
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub(crate) struct LogLocation<'a> {
         pub function_name: Cow<'a, str>,
         pub file_name: Cow<'a, str>,
@@ -126,6 +136,8 @@ pub(crate) mod log_handler {
     #[derive(Debug)]
     pub(crate) struct OutputHandlerAlreadySet;
 
+    static USING_CUSTOM_HANDLER: OnceLock<AtomicBool> = OnceLock::new();
+
     /// Set an idiomatic log hander
     pub(crate) fn set_logging_output_handler(
         handler: impl Fn(LogEntry) + 'static + Send + Sync,
@@ -136,10 +148,11 @@ pub(crate) mod log_handler {
                   raw_logger_name: *const std::os::raw::c_char,
                   raw_timestamp: rcutils_time_point_value_t,
                   raw_format: *const std::os::raw::c_char,
-                  // NOTE: In rclrs we are choosing to always format the full
-                  // message in advance, so the format field always contains
-                  // the finished formatted message. Therefore we can just ignore
-                  // the raw formatting arguments.
+                  // NOTE: In the rclrs logging test we are choosing to format
+                  // the full message in advance when using the custom handler,
+                  // so the format field always contains the finished formatted
+                  // message. Therefore we can just ignore the raw formatting
+                  // arguments.
                   _raw_formatting_arguments: *mut va_list| {
                 unsafe {
                     // NOTE: We use .unwrap() extensively inside this function because
@@ -189,7 +202,16 @@ pub(crate) mod log_handler {
             rcutils_logging_set_output_handler(Some(rclrs_logging_output_handler));
         }
 
+        USING_CUSTOM_HANDLER
+            .get_or_init(|| AtomicBool::new(false))
+            .store(true, Ordering::Release);
         Ok(())
+    }
+
+    pub(crate) fn is_using_custom_handler() -> bool {
+        USING_CUSTOM_HANDLER
+            .get_or_init(|| AtomicBool::new(false))
+            .load(Ordering::Acquire)
     }
 
     /// This function exists so that we can give a raw function pointer to
@@ -219,5 +241,8 @@ pub(crate) mod log_handler {
         unsafe {
             rcutils_logging_set_output_handler(Some(rcl_logging_multiple_output_handler));
         }
+        USING_CUSTOM_HANDLER
+            .get_or_init(|| AtomicBool::new(false))
+            .store(false, Ordering::Release);
     }
 }
