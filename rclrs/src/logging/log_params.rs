@@ -207,7 +207,7 @@ impl LogSeverity {
 
     /// This is only used by the log output handler during testing, so it will
     /// not be compiled when testing is not configured
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn from_native(native: i32) -> Self {
         use crate::rcl_bindings::rcl_log_severity_t::*;
         match native {
