@@ -240,6 +240,8 @@ pub(crate) mod log_handler {
     pub(crate) fn reset_logging_output_handler() {
         let _lifecycle = ENTITY_LIFECYCLE_MUTEX.lock().unwrap();
         unsafe {
+            // SAFETY: The global mutex is locked. No other precondition is
+            // required.
             rcutils_logging_set_output_handler(Some(rcl_logging_multiple_output_handler));
         }
         USING_CUSTOM_HANDLER
