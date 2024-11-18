@@ -42,7 +42,7 @@ pub use logger::*;
 ///     node
 ///     .error()
 ///     .skip_first()
-///     .interval(Duration::from_millis(1000)),
+///     .throttle(Duration::from_millis(1000)),
 ///     "Noisy error that we expect the first time"
 /// );
 ///
@@ -50,7 +50,7 @@ pub use logger::*;
 /// log!(
 ///     node
 ///     .info()
-///     .interval(Duration::from_millis(1000))
+///     .throttle(Duration::from_millis(1000))
 ///     .only_if(count % 10 == 0),
 ///     "Manually constructed LogConditions",
 /// );
@@ -124,10 +124,10 @@ macro_rules! log {
                 $crate::LogOccurrence::All => (),
             }
 
-            // If we have a throttle interval then check if we're inside or outside
+            // If we have a throttle duration then check if we're inside or outside
             // of that interval.
-            let interval = params.get_interval();
-            if interval > std::time::Duration::ZERO {
+            let throttle = params.get_throttle();
+            if throttle > std::time::Duration::ZERO {
                 static LAST_LOG_TIME: OnceLock<Mutex<SystemTime>> = OnceLock::new();
                 let last_log_time = LAST_LOG_TIME.get_or_init(|| {
                     Mutex::new(std::time::SystemTime::now())
@@ -136,11 +136,10 @@ macro_rules! log {
                 if !first_time {
                     let now = std::time::SystemTime::now();
                     let mut previous = last_log_time.lock().unwrap();
-                    if now >= *previous + interval {
+                    if now >= *previous + throttle {
                         *previous = now;
                     } else {
-                        // We are still inside the throttle interval, so just exit
-                        // here.
+                        // We are still inside the throttle interval, so just exit here.
                         return;
                     }
                 }

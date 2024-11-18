@@ -10,13 +10,12 @@ pub struct LogParams<'a> {
     severity: LogSeverity,
     /// Specify when a log message should be published (See[`LoggingOccurrence`] above)
     occurs: LogOccurrence,
-    /// Specify the publication interval of the message.  A value of ZERO (0) indicates that the
-    /// message should be published every time, otherwise, the message will only be published once
-    /// the specified interval has elapsed.
-    /// This field is typically used to limit the output from high-frequency messages, e.g. instead
-    /// of publishing a log message every 10 milliseconds, the `publish_interval` can be configured
-    /// such that the message is published every 10 seconds.
-    interval: Duration,
+    /// Specify a publication throttling interval for the message.  A value of ZERO (0) indicates that the
+    /// message should not be throttled. Otherwise, the message will only be published once the specified
+    /// interval has elapsed. This field is typically used to limit the output from high-frequency messages,
+    /// e.g. if `log!(logger.throttle(Duration::from_secs(1)), "message");` is called every 10ms, it will
+    /// nevertheless only be published once per second.
+    throttle: Duration,
     /// The log message will only published if the specified expression evaluates to true
     only_if: bool,
 }
@@ -28,7 +27,7 @@ impl<'a> LogParams<'a> {
             logger_name,
             severity: Default::default(),
             occurs: Default::default(),
-            interval: Duration::new(0, 0),
+            throttle: Duration::new(0, 0),
             only_if: true,
         }
     }
@@ -48,9 +47,9 @@ impl<'a> LogParams<'a> {
         self.occurs
     }
 
-    /// Get the interval
-    pub fn get_interval(&self) -> Duration {
-        self.interval
+    /// Get the throttle interval duration
+    pub fn get_throttle(&self) -> Duration {
+        self.throttle
     }
 
     /// Get the arbitrary filter set by the user
@@ -88,14 +87,14 @@ pub trait ToLogParams<'a>: Sized {
         params
     }
 
-    /// Set an interval during which this log will not publish. A value of zero
-    /// will never block the message from being published, and this is the
+    /// Set a throttling interval during which this log will not publish. A value
+    /// of zero will never block the message from being published, and this is the
     /// default behavior.
     ///
     /// A negative duration is not valid, but will be treated as a zero duration.
-    fn interval(self, interval: Duration) -> LogParams<'a> {
+    fn throttle(self, throttle: Duration) -> LogParams<'a> {
         let mut params = self.to_log_params();
-        params.interval = interval;
+        params.throttle = throttle;
         params
     }
 
@@ -103,7 +102,7 @@ pub trait ToLogParams<'a>: Sized {
     /// this function.
     ///
     /// Other factors may prevent the log from being published if a `true` is
-    /// passed in, such as `ToLogParams::interval` or `ToLogParams::once`
+    /// passed in, such as `ToLogParams::throttle` or `ToLogParams::once`
     /// filtering the log.
     fn only_if(self, only_if: bool) -> LogParams<'a> {
         let mut params = self.to_log_params();
