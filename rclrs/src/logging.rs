@@ -644,8 +644,8 @@ mod tests {
         for i in 0..15 {
             log!(
                 "logger"
-                .throttle(Duration::from_nanos(10))
-                .throttle_clock(ThrottleClock::Clock(&clock)),
+                    .throttle(Duration::from_nanos(10))
+                    .throttle_clock(ThrottleClock::Clock(&clock)),
                 "custom clock throttled message",
             );
             source.set_ros_time_override(i);
