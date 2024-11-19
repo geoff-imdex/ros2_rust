@@ -637,8 +637,26 @@ mod tests {
         assert_eq!(last_severity(), LogSeverity::Error);
         assert_eq!(count_message("error for custom logger"), 2);
 
-        reset_logging_output_handler();
+        // Test whether throttling works correctly with a ROS clock
+        let (clock, source) = Clock::with_source();
+        source.set_ros_time_override(0);
 
+        for i in 0..15 {
+            log!(
+                "logger"
+                .throttle(Duration::from_nanos(10))
+                .throttle_clock(ThrottleClock::Clock(&clock)),
+                "custom clock throttled message",
+            );
+            source.set_ros_time_override(i);
+        }
+
+        // The throttle interval is 10ns and the loop shifted the time from 0ns
+        // to 14ns, triggering the log macro once per nanosecond. That means we
+        // should see two messages in the log.
+        assert_eq!(count_message("custom clock throttled message"), 2);
+
+        reset_logging_output_handler();
         Ok(())
     }
 

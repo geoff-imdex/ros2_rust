@@ -106,6 +106,13 @@ pub trait ToLogParams<'a>: Sized {
         params
     }
 
+    /// Set the clock that will be used to control [throttling][Self::throttle].
+    fn throttle_clock(self, clock: ThrottleClock<'a>) -> LogParams<'a> {
+        let mut params = self.to_log_params();
+        params.throttle_clock = clock;
+        params
+    }
+
     /// The log will not be published if a `false` expression is passed into
     /// this function.
     ///
