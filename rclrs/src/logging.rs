@@ -81,7 +81,7 @@ macro_rules! log {
         // Note: that issue appears to be specific to jetbrains intellisense however,
         // observed same/similar behaviour with rust-analyzer/rustc
         use std::sync::{Once, OnceLock, Mutex};
-        use std::time::SystemTime;
+        use std::time::{SystemTime, Instant};
 
         // We wrap the functional body of the macro inside of a closure which
         // we immediately trigger. This allows us to use `return` to exit the
@@ -128,19 +128,64 @@ macro_rules! log {
             // of that interval.
             let throttle = params.get_throttle();
             if throttle > std::time::Duration::ZERO {
-                static LAST_LOG_TIME: OnceLock<Mutex<SystemTime>> = OnceLock::new();
-                let last_log_time = LAST_LOG_TIME.get_or_init(|| {
-                    Mutex::new(std::time::SystemTime::now())
-                });
+                match params.get_throttle_clock() {
+                    $crate::ThrottleClock::SteadyTime => {
+                        static LAST_LOG_STEADY_TIME: OnceLock<Mutex<Instant>> = OnceLock::new();
+                        let last_log_time = LAST_LOG_STEADY_TIME.get_or_init(|| {
+                            Mutex::new(Instant::now())
+                        });
 
-                if !first_time {
-                    let now = std::time::SystemTime::now();
-                    let mut previous = last_log_time.lock().unwrap();
-                    if now >= *previous + throttle {
-                        *previous = now;
-                    } else {
-                        // We are still inside the throttle interval, so just exit here.
-                        return;
+                        if !first_time {
+                            let now = Instant::now();
+                            let mut previous = last_log_time.lock().unwrap();
+                            if now >= *previous + throttle {
+                                *previous = now;
+                            } else {
+                                // We are still inside the throttle interval, so just exit here.
+                                return;
+                            }
+                        }
+                    }
+                    $crate::ThrottleClock::SystemTime => {
+                        static LAST_LOG_SYSTEM_TIME: OnceLock<Mutex<SystemTime>> = OnceLock::new();
+                        let last_log_time = LAST_LOG_SYSTEM_TIME.get_or_init(|| {
+                            Mutex::new(SystemTime::now())
+                        });
+
+                        if !first_time {
+                            let now = SystemTime::now();
+                            let mut previous = last_log_time.lock().unwrap();
+                            if now >= *previous + throttle {
+                                *previous = now;
+                            } else {
+                                // We are still inside the throttle interval, so just exit here.
+                                return;
+                            }
+                        }
+                    }
+                    $crate::ThrottleClock::Clock(clock) => {
+                        static LAST_LOG_CLOCK_TIME: OnceLock<Mutex<$crate::Time>> = OnceLock::new();
+                        let last_log_time = LAST_LOG_CLOCK_TIME.get_or_init(|| {
+                            Mutex::new(clock.now())
+                        });
+
+                        if !first_time {
+                            let now = clock.now();
+                            let mut previous = last_log_time.lock().unwrap();
+
+                            let new_interval = !now.compare_with(
+                                &(previous.clone() + throttle),
+                                |now, interval| now < interval,
+                            )
+                            .is_some_and(|eval| eval);
+
+                            if new_interval {
+                                *previous = now;
+                            } else {
+                                // We are still inside the throttle interval, so just exit here.
+                                return;
+                            }
+                        }
                     }
                 }
             }
