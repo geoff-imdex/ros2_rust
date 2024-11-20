@@ -55,7 +55,7 @@ impl<'a> LogParams<'a> {
         self.throttle
     }
 
-    /// The the throttle clock
+    /// Get the throttle clock
     pub fn get_throttle_clock(&self) -> ThrottleClock<'a> {
         self.throttle_clock
     }
